@@ -3,7 +3,7 @@ import Header from './components/Header'
 import BackgroundDecorations from './components/BackgroundDecorations'
 import SearchBar from './components/SearchBar'
 import LostItemList from './components/LostItemList'
-import SmartRegisterModal from './components/SmartRegisterModal'
+import LostItemModal from './components/LostItemModal'
 import DetailModal from './components/DetailModal'
 import { useSmartSearch } from './hooks/useSmartSearch'
 import { LostItem, LostItemFormData } from './types/lostItem'
@@ -110,9 +110,10 @@ function App() {
         />
       </main>
 
-      <SmartRegisterModal
+      <LostItemModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddItem}
       />
 
       <DetailModal
