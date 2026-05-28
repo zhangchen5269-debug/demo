@@ -48,8 +48,8 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
     <Modal isOpen={isOpen} onClose={onClose} title="登记失物">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-2">
-            物品名称 <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-ink-secondary mb-2">
+            物品名称 <span className="text-ruby">*</span>
           </label>
           <input
             type="text"
@@ -62,8 +62,8 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-2">
-            物品类别 <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-ink-secondary mb-2">
+            物品类别 <span className="text-ruby">*</span>
           </label>
           <div className="grid grid-cols-3 gap-2">
             {categories.map((cat) => (
@@ -75,8 +75,8 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 onClick={() => handleChange('category', cat)}
                 className={`py-2 px-4 rounded-lg text-sm font-medium transition-all border ${
                   formData.category === cat
-                    ? 'bg-primary text-white border-transparent'
-                    : 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-50'
+                    ? 'bg-primary text-ink border-transparent'
+                    : 'bg-canvas text-ink-secondary border-hairline hover:bg-canvas-soft'
                 }`}
               >
                 {cat}
@@ -86,8 +86,8 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-2">
-            物品描述 <span className="text-red-500">*</span>
+          <label className="block text-sm font-medium text-ink-secondary mb-2">
+            物品描述 <span className="text-ruby">*</span>
           </label>
           <textarea
             required
@@ -101,9 +101,9 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
+            <label className="block text-sm font-medium text-ink-secondary mb-2">
               <MapPin className="w-4 h-4 inline mr-1" />
-              丢失地点 <span className="text-red-500">*</span>
+              丢失地点 <span className="text-ruby">*</span>
             </label>
             <input
               type="text"
@@ -116,9 +116,9 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
+            <label className="block text-sm font-medium text-ink-secondary mb-2">
               <User className="w-4 h-4 inline mr-1" />
-              联系方式 <span className="text-red-500">*</span>
+              联系方式 <span className="text-ruby">*</span>
             </label>
             <input
               type="text"
@@ -133,9 +133,9 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
+            <label className="block text-sm font-medium text-ink-secondary mb-2">
               <Calendar className="w-4 h-4 inline mr-1" />
-              丢失日期 <span className="text-red-500">*</span>
+              丢失日期 <span className="text-ruby">*</span>
             </label>
             <input
               type="date"
@@ -147,7 +147,7 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
+            <label className="block text-sm font-medium text-ink-secondary mb-2">
               <Clock className="w-4 h-4 inline mr-1" />
               大致时间
             </label>
@@ -161,14 +161,14 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-neutral-700 mb-2">
+          <label className="block text-sm font-medium text-ink-secondary mb-2">
             <Upload className="w-4 h-4 inline mr-1" />
             添加图片（可选）
           </label>
-          <div className="border-2 border-dashed border-neutral-300 rounded-xl p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
-            <Upload className="w-8 h-8 text-neutral-500 mx-auto mb-2" />
-            <p className="text-sm text-neutral-600">点击或拖拽上传图片</p>
-            <p className="text-xs text-neutral-500 mt-1">支持 JPG、PNG 格式</p>
+          <div className="border-2 border-dashed border-hairline rounded-xl p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
+            <Upload className="w-8 h-8 text-ink-mute mx-auto mb-2" />
+            <p className="text-sm text-ink-secondary">点击或拖拽上传图片</p>
+            <p className="text-xs text-ink-mute mt-1">支持 JPG、PNG 格式</p>
           </div>
         </div>
 

@@ -41,11 +41,11 @@ export default function LostItemList({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white/70 backdrop-blur-xl rounded-[20px] border border-white/50 shadow-[0_8px_30px_rgba(0,0,0,0.06)] text-center py-16"
+        className="bg-canvas backdrop-blur-xl rounded-[20px] border border-hairline shadow-soft text-center py-16"
       >
-        <Package className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-        <p className="text-neutral-700 text-lg font-medium">暂无失物信息</p>
-        <p className="text-neutral-500 text-sm mt-2">点击上方按钮登记失物</p>
+        <Package className="w-16 h-16 text-ink-mute mx-auto mb-4" />
+        <p className="text-ink-secondary text-lg font-medium">暂无失物信息</p>
+        <p className="text-ink-mute text-sm mt-2">点击上方按钮登记失物</p>
       </motion.div>
     )
   }

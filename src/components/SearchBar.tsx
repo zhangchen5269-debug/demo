@@ -9,12 +9,12 @@ interface SearchBarProps {
   onModeChange?: (mode: 'keyword' | 'ai') => void
 }
 
-export default function SearchBar({ 
-  value, 
-  onChange, 
+export default function SearchBar({
+  value,
+  onChange,
   isSearching = false,
   searchMode = 'keyword',
-  onModeChange 
+  onModeChange
 }: SearchBarProps) {
   return (
     <motion.div
@@ -33,7 +33,7 @@ export default function SearchBar({
               <Loader2 className="w-5 h-5 text-primary" />
             </motion.div>
           ) : (
-            <Search className="w-5 h-5 text-neutral-500" />
+            <Search className="w-5 h-5 text-ink-mute" />
           )}
         </div>
         
@@ -42,7 +42,7 @@ export default function SearchBar({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="搜索失物名称、地点或描述..."
-          className="w-full bg-white border border-gray-200 rounded-xl pl-12 pr-24 py-3.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+          className="w-full bg-canvas border border-hairline rounded-xl pl-12 pr-24 py-3.5 text-ink placeholder-ink-mute focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
         />
         
         {value && (
@@ -51,9 +51,9 @@ export default function SearchBar({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             onClick={() => onChange('')}
-            className="absolute right-24 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+            className="absolute right-24 top-1/2 -translate-y-1/2 p-1 hover:bg-canvas-soft rounded-full transition-colors"
           >
-            <X className="w-4 h-4 text-gray-400" />
+            <X className="w-4 h-4 text-ink-mute" />
           </motion.button>
         )}
         
@@ -64,8 +64,8 @@ export default function SearchBar({
             onClick={() => onModeChange(searchMode === 'keyword' ? 'ai' : 'keyword')}
             className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               searchMode === 'ai'
-                ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-gradient-to-r from-primary to-primary-deep text-ink shadow-soft'
+                : 'bg-canvas-soft text-ink-mute hover:bg-primary-bg-subdued'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -79,7 +79,7 @@ export default function SearchBar({
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}
-          className="mt-2 text-xs text-gray-500 flex items-center gap-2"
+          className="mt-2 text-xs text-ink-mute flex items-center gap-2"
         >
           <Sparkles className="w-3.5 h-3.5 text-primary" />
           <span>AI 语义匹配模式 - 正在分析语义相关性...</span>

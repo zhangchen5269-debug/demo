@@ -13,13 +13,13 @@ export default function BackgroundDecorations() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.15 }}
         transition={{ duration: 1.5, delay: 0.3 }}
-        className="absolute -bottom-32 -left-32 w-80 h-80 bg-secondary/20 rounded-full blur-3xl"
+        className="absolute -bottom-32 -left-32 w-80 h-80 bg-primary-deep/20 rounded-full blur-3xl"
       />
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 0.1 }}
         transition={{ duration: 1.5, delay: 0.6 }}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-accent/15 rounded-full blur-3xl"
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-bg-subdued rounded-full blur-3xl"
       />
     </div>
   )

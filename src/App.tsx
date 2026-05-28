@@ -62,8 +62,8 @@ function App() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="mb-8"
         >
-          <h2 className="text-3xl font-bold text-neutral-800 mb-2">失物招领</h2>
-          <p className="text-neutral-600">帮助失主快速找回遗失物品</p>
+          <h2 className="text-3xl font-bold text-ink mb-2">失物招领</h2>
+          <p className="text-ink-mute">帮助失主快速找回遗失物品</p>
         </motion.div>
 
         <SearchBar 
@@ -75,12 +75,12 @@ function App() {
         />
 
         <div className="mb-6 flex items-center justify-between">
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-ink-mute">
             {query.trim() ? (
               <>
                 共找到 <span className="font-bold text-primary">{filteredItems.length}</span> 条失物信息
                 {searchMode === 'ai' && matchedIds.length > 0 && (
-                  <span className="ml-2 text-xs text-gray-500">
+                  <span className="ml-2 text-xs text-ink-mute">
                     (其中 <span className="font-semibold text-primary">{matchedIds.length}</span> 条高匹配)
                   </span>
                 )}
@@ -94,7 +94,7 @@ function App() {
           {query && (
             <button
               onClick={() => handleSearch('')}
-              className="text-sm text-primary hover:text-primary-dark transition-colors"
+              className="text-sm text-primary hover:text-primary-deep transition-colors"
             >
               清除搜索
             </button>

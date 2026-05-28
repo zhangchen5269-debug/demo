@@ -6,7 +6,7 @@
 
 @layer base {
   body {
-    @apply bg-gradient-soft text-neutral-800 font-sans antialiased;
+    @apply bg-gradient-soft text-ink font-sans antialiased;
     min-height: 100vh;
   }
 
@@ -17,11 +17,11 @@
 
 @layer components {
   .glass {
-    @apply bg-white border border-neutral-200 shadow-soft;
+    @apply bg-canvas border border-hairline shadow-soft;
   }
 
   .glass-dark {
-    @apply bg-neutral-50 border border-neutral-200 shadow-soft;
+    @apply bg-canvas-soft border border-hairline shadow-soft;
   }
 
   .glass-card {
@@ -33,21 +33,21 @@
   }
 
   .btn-primary {
-    @apply bg-primary text-white font-semibold px-6 py-3 rounded-xl
-           hover:bg-primary-dark hover:shadow-soft transition-all duration-300
+    @apply bg-primary text-ink font-semibold px-6 py-3 rounded-full
+           hover:bg-primary-deep hover:shadow-soft transition-all duration-300
            focus:outline-none focus:ring-2 focus:ring-primary/30;
   }
 
   .btn-secondary {
-    @apply bg-white text-primary font-medium px-6 py-3 rounded-xl
-           border border-primary/20 hover:bg-neutral-50 transition-all duration-300
+    @apply bg-canvas text-primary font-medium px-6 py-3 rounded-full
+           border border-hairline hover:bg-canvas-soft transition-all duration-300
            focus:outline-none focus:ring-2 focus:ring-primary/30;
   }
 
   .input-field {
-    @apply w-full bg-white border border-neutral-200 rounded-xl
-           px-4 py-3 text-neutral-800 placeholder-neutral-400
-           focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30
+    @apply w-full bg-canvas border border-hairline rounded-lg
+           px-4 py-3 text-ink placeholder-ink-mute
+           focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50
            transition-all duration-300;
   }
 

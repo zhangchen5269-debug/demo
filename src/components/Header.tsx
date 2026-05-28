@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Link2, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 interface HeaderProps {
   onAddClick: () => void
@@ -15,16 +15,13 @@ export default function Header({ onAddClick }: HeaderProps) {
     >
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <motion.div
-          className="flex items-center gap-3"
+          className="flex items-center"
           whileHover={{ scale: 1.02 }}
           transition={{ type: 'spring', stiffness: 300 }}
         >
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center shadow-soft">
-            <Link2 className="w-7 h-7 text-white" />
-          </div>
           <div>
-            <h1 className="text-2xl font-bold text-neutral-800">MindLink</h1>
-            <p className="text-xs text-neutral-600">校园失物招领平台</p>
+            <h1 className="text-2xl font-bold text-ink">MindLink</h1>
+            <p className="text-xs text-ink-mute">校园失物招领平台</p>
           </div>
         </motion.div>
 
