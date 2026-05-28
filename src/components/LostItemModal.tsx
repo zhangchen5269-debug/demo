@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Pencil, 
@@ -15,12 +15,15 @@ import {
   Wand2,
   CheckCircle2,
   Edit3,
-  X
+  X,
+  Upload,
+  Image as ImageIcon,
+  Camera
 } from 'lucide-react'
 import Modal from './Modal'
 import LostItemCard from './LostItemCard'
 import { LostItemFormData } from '../types/lostItem'
-import { parseLostItem, ParsedLostItem } from '../utils/api'
+import { parseLostItem, ParsedLostItem, analyzeImageForRegistration, ImageRegistrationResult } from '../utils/api'
 
 interface LostItemModalProps {
   isOpen: boolean
@@ -28,17 +31,101 @@ interface LostItemModalProps {
   onSubmit: (data: LostItemFormData) => void
 }
 
-type TabType = 'manual' | 'ai'
-type AISTep = 'input' | 'parsing' | 'preview' | 'success'
+type TabType = 'manual' | 'ai-text' | 'ai-image'
+type AIStep = 'input' | 'parsing' | 'preview' | 'success'
+type ImageAIStep = 'upload' | 'analyzing' | 'form' | 'success'
 
 const CATEGORIES = ['背包', '水杯', '手机', '钥匙', '耳机', '身份证', '其他']
 const COLORS = ['黑色', '白色', '灰色', '银色', '金色', '蓝色', '红色', '绿色', '黄色', '橙色', '紫色', '粉色', '棕色', '其他']
 const FEATURES = ['全新', '有划痕', '有标签', '有刻字', '带壳', '带挂件', '限量版', '二手']
 
+function ImageUploader({ 
+  image, 
+  onChange 
+}: { 
+  image?: string
+  onChange: (image: string) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 4 * 1024 * 1024) {
+      alert('图片大小不能超过4MB')
+      return
+    }
+
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+      alert('只支持 JPG、PNG、WebP 格式的图片')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const result = event.target?.result as string
+      onChange(result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRemoveImage = () => {
+    onChange('')
+  }
+
+  return (
+    <div className="space-y-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/webp"
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+      
+      {image ? (
+        <div className="relative group">
+          <div className="w-full h-40 bg-canvas-soft rounded-xl overflow-hidden border border-hairline">
+            <img 
+              src={image} 
+              alt="预览" 
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={handleRemoveImage}
+            className="absolute -top-2 -right-2 w-7 h-7 bg-ruby text-white rounded-full flex items-center justify-center shadow-md"
+          >
+            <X className="w-4 h-4" />
+          </motion.button>
+        </div>
+      ) : (
+        <motion.button
+          type="button"
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full py-6 border-2 border-dashed border-hairline rounded-xl bg-canvas-soft/50 flex flex-col items-center gap-2 hover:border-primary/50 hover:bg-primary-bg-subdued/50 transition-all duration-300"
+        >
+          <div className="w-10 h-10 rounded-full bg-primary-bg-subdued flex items-center justify-center">
+            <Upload className="w-5 h-5 text-primary" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium text-ink-secondary">点击上传图片</p>
+            <p className="text-xs text-ink-mute mt-1">支持 JPG、PNG、WebP，不超过4MB</p>
+          </div>
+        </motion.button>
+      )}
+    </div>
+  )
+}
+
 export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('manual')
   
-  // Manual form state
   const [manualForm, setManualForm] = useState<LostItemFormData & { color: string; features: string[] }>({
     title: '',
     description: '',
@@ -52,11 +139,27 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
     features: []
   })
 
-  // AI form state
-  const [aiStep, setAiStep] = useState<AISTep>('input')
+  const [aiStep, setAiStep] = useState<AIStep>('input')
   const [aiInput, setAiInput] = useState('')
   const [parsedItem, setParsedItem] = useState<ParsedLostItem | null>(null)
   const [editableItem, setEditableItem] = useState<Partial<ParsedLostItem>>({})
+  const [aiImage, setAiImage] = useState<string>('')
+
+  const [imageAiStep, setImageAiStep] = useState<ImageAIStep>('upload')
+  const [uploadedImage, setUploadedImage] = useState<string>('')
+  const [imageResult, setImageResult] = useState<ImageRegistrationResult | null>(null)
+  const [imageForm, setImageForm] = useState<LostItemFormData & { color: string; features: string[] }>({
+    title: '',
+    description: '',
+    category: '其他',
+    location: '',
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toTimeString().slice(0, 5),
+    contact: '',
+    image: '',
+    color: '',
+    features: []
+  })
 
   const resetForms = () => {
     setManualForm({
@@ -75,6 +178,22 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
     setAiInput('')
     setParsedItem(null)
     setEditableItem({})
+    setAiImage('')
+    setImageAiStep('upload')
+    setUploadedImage('')
+    setImageResult(null)
+    setImageForm({
+      title: '',
+      description: '',
+      category: '其他',
+      location: '',
+      date: new Date().toISOString().split('T')[0],
+      time: new Date().toTimeString().slice(0, 5),
+      contact: '',
+      image: '',
+      color: '',
+      features: []
+    })
   }
 
   const handleClose = () => {
@@ -122,9 +241,49 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
       date: today,
       time: item.time,
       contact: item.contact,
+      image: aiImage,
     })
     
     setAiStep('success')
+    
+    setTimeout(() => {
+      handleClose()
+    }, 2000)
+  }
+
+  const handleImageAnalyze = async () => {
+    if (!uploadedImage) return
+    setImageAiStep('analyzing')
+    
+    try {
+      const result = await analyzeImageForRegistration(uploadedImage)
+      setImageResult(result)
+      setImageForm({
+        title: result.title,
+        description: result.description,
+        category: result.category,
+        location: result.location,
+        date: result.date,
+        time: result.time,
+        contact: result.contact,
+        image: uploadedImage,
+        color: result.color,
+        features: result.features
+      })
+      setImageAiStep('form')
+    } catch (error) {
+      console.error('图像分析失败:', error)
+      setImageAiStep('upload')
+      alert('图像分析失败，请重试或使用其他方式')
+    }
+  }
+
+  const handleImageFormSubmit = () => {
+    onSubmit({
+      ...imageForm,
+      features: imageForm.features
+    })
+    setImageAiStep('success')
     
     setTimeout(() => {
       handleClose()
@@ -140,6 +299,15 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
     }))
   }
 
+  const toggleImageFeature = (feature: string) => {
+    setImageForm(prev => ({
+      ...prev,
+      features: prev.features.includes(feature)
+        ? prev.features.filter(f => f !== feature)
+        : [...prev.features, feature]
+    }))
+  }
+
   const editField = (field: keyof ParsedLostItem, value: string) => {
     setEditableItem(prev => ({ ...prev, [field]: value }))
   }
@@ -147,40 +315,47 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="登记失物">
       <div className="space-y-6">
-        {/* Tab Switcher */}
         <div className="relative flex items-center gap-2 p-1 bg-canvas-soft rounded-full border border-hairline">
           <motion.div
             className="absolute inset-y-1 bg-canvas rounded-full shadow-sm"
             initial={false}
             animate={{
-              left: activeTab === 'manual' ? '4px' : 'calc(50% + 2px)',
-              width: 'calc(50% - 6px)'
+              left: activeTab === 'manual' ? '4px' : activeTab === 'ai-text' ? 'calc(33.333% + 2px)' : 'calc(66.666% + 2px)',
+              width: 'calc(33.333% - 6px)'
             }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
           />
           <button
             onClick={() => setActiveTab('manual')}
-            className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-colors z-10 ${
+            className={`relative flex-1 flex items-center justify-center gap-1 py-2 rounded-full text-xs font-medium transition-colors z-10 ${
               activeTab === 'manual' ? 'text-ink' : 'text-ink-mute hover:text-ink'
             }`}
           >
-            <Pencil className="w-4 h-4" />
+            <Pencil className="w-3.5 h-3.5" />
             手动填写
           </button>
           <button
-            onClick={() => setActiveTab('ai')}
-            className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-sm font-medium transition-colors z-10 ${
-              activeTab === 'ai' ? 'text-ink' : 'text-ink-mute hover:text-ink'
+            onClick={() => setActiveTab('ai-text')}
+            className={`relative flex-1 flex items-center justify-center gap-1 py-2 rounded-full text-xs font-medium transition-colors z-10 ${
+              activeTab === 'ai-text' ? 'text-ink' : 'text-ink-mute hover:text-ink'
             }`}
           >
-            <Sparkles className="w-4 h-4" />
-            AI 智能登记
+            <Sparkles className="w-3.5 h-3.5" />
+            [AI]文字登记
+          </button>
+          <button
+            onClick={() => setActiveTab('ai-image')}
+            className={`relative flex-1 flex items-center justify-center gap-1 py-2 rounded-full text-xs font-medium transition-colors z-10 ${
+              activeTab === 'ai-image' ? 'text-ink' : 'text-ink-mute hover:text-ink'
+            }`}
+          >
+            <Camera className="w-3.5 h-3.5" />
+            [AI]图片识别
           </button>
         </div>
 
-        {/* Content Area */}
         <AnimatePresence mode="wait">
-          {activeTab === 'manual' ? (
+          {activeTab === 'manual' && (
             <motion.form
               key="manual"
               initial={{ opacity: 0, y: 10 }}
@@ -190,7 +365,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
               onSubmit={handleManualSubmit}
               className="space-y-6"
             >
-              {/* Title */}
               <div>
                 <label className="block text-sm font-medium text-ink-secondary mb-2">
                   <FileText className="w-4 h-4 inline mr-1" />
@@ -206,7 +380,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 />
               </div>
 
-              {/* Category & Color */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink-secondary mb-2">
@@ -223,7 +396,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                     ))}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-ink-secondary mb-2">
                     <Palette className="w-4 h-4 inline mr-1" />
@@ -242,7 +414,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 </div>
               </div>
 
-              {/* Location & Contact */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink-secondary mb-2">
@@ -258,7 +429,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                     className="input-field"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-ink-secondary mb-2">
                     <User className="w-4 h-4 inline mr-1" />
@@ -275,7 +445,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 </div>
               </div>
 
-              {/* Date & Time */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink-secondary mb-2">
@@ -290,7 +459,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                     className="input-field"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-ink-secondary mb-2">
                     <Clock className="w-4 h-4 inline mr-1" />
@@ -305,7 +473,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-ink-secondary mb-2">
                   <FileText className="w-4 h-4 inline mr-1" />
@@ -321,7 +488,17 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 />
               </div>
 
-              {/* Features */}
+              <div>
+                <label className="block text-sm font-medium text-ink-secondary mb-2">
+                  <ImageIcon className="w-4 h-4 inline mr-1" />
+                  添加图片（可选）
+                </label>
+                <ImageUploader 
+                  image={manualForm.image} 
+                  onChange={(image) => setManualForm({ ...manualForm, image })} 
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-ink-secondary mb-2">
                   物品特征（可多选）
@@ -344,7 +521,6 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 </div>
               </div>
 
-              {/* Submit Button */}
               <motion.button
                 type="submit"
                 whileHover={{ scale: 1.02 }}
@@ -355,9 +531,11 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                 发布失物
               </motion.button>
             </motion.form>
-          ) : (
+          )}
+
+          {activeTab === 'ai-text' && (
             <motion.div
-              key="ai"
+              key="ai-text"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
@@ -370,7 +548,7 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                     <div className="flex items-start gap-3">
                       <Sparkles className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
                       <div className="text-sm text-ink-secondary">
-                        <p className="font-medium text-ink mb-2">💡 如何使用：</p>
+                        <p className="font-medium text-ink mb-2">💡 使用说明：</p>
                         <p className="mb-2">用自然语言描述你拾到的物品，例如：</p>
                         <p className="text-ink-mute italic">「今天下午3点在图书馆三楼捡到一个黑色小米耳机，联系微信13800138000」</p>
                       </div>
@@ -380,15 +558,26 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                   <textarea
                     value={aiInput}
                     onChange={(e) => setAiInput(e.target.value)}
-                    placeholder="请用自然语言描述你拾到的物品...
-                    
+                    placeholder="请用自然语言描述你捡到或丢失的物品...
+
 包含信息越详细越好：
 • 物品名称和外观
-• 拾到的时间和地点
+• 捡到或丢失的时间和地点
 • 联系方式"
                     rows={6}
                     className="input-field resize-none"
                   />
+
+                  <div>
+                    <label className="block text-sm font-medium text-ink-secondary mb-2">
+                      <ImageIcon className="w-4 h-4 inline mr-1" />
+                      添加图片（可选）
+                    </label>
+                    <ImageUploader 
+                      image={aiImage} 
+                      onChange={setAiImage} 
+                    />
+                  </div>
 
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -404,11 +593,7 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
               )}
 
               {aiStep === 'parsing' && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="py-16 text-center"
-                >
+                <div className="py-16 text-center">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
@@ -420,15 +605,11 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                   </motion.div>
                   <h3 className="text-lg font-semibold text-ink mb-2">AI 正在解析...</h3>
                   <p className="text-ink-mute">正在提取物品信息，请稍候</p>
-                </motion.div>
+                </div>
               )}
 
               {aiStep === 'preview' && parsedItem && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-6"
-                >
+                <div className="space-y-6">
                   <div className="bg-gradient-to-r from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-4 border border-hairline flex items-center gap-3">
                     <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
                     <div className="text-sm text-ink-secondary">
@@ -477,6 +658,17 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                     isTextarea
                   />
 
+                  <div>
+                    <label className="block text-sm font-medium text-ink-secondary mb-2">
+                      <ImageIcon className="w-4 h-4 inline mr-1" />
+                      添加图片（可选）
+                    </label>
+                    <ImageUploader 
+                      image={aiImage} 
+                      onChange={setAiImage} 
+                    />
+                  </div>
+
                   <div className="pt-2">
                     <p className="text-sm font-medium text-ink-secondary mb-3">卡片预览：</p>
                     <div className="transform scale-90 origin-left">
@@ -485,6 +677,7 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                           id: 'preview',
                           status: '待认领',
                           createdAt: new Date().toISOString(),
+                          image: aiImage,
                           ...parsedItem,
                           ...editableItem,
                         }}
@@ -511,15 +704,11 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                       确认发布
                     </motion.button>
                   </div>
-                </motion.div>
+                </div>
               )}
 
               {aiStep === 'success' && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="py-16 text-center"
-                >
+                <div className="py-16 text-center">
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -530,7 +719,271 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                   </motion.div>
                   <h3 className="text-xl font-bold text-ink mb-2">发布成功！</h3>
                   <p className="text-ink-mute">失物信息已发布，正在返回首页...</p>
-                </motion.div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'ai-image' && (
+            <motion.div
+              key="ai-image"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {imageAiStep === 'upload' && (
+                <div className="space-y-6">
+                  <div className="bg-gradient-to-br from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-5 border border-hairline">
+                    <div className="flex items-start gap-3">
+                      <Camera className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                      <div className="text-sm text-ink-secondary">
+                        <p className="font-medium text-ink mb-2">📸 使用说明：</p>
+                        <p className="mb-2">上传失物图片，AI 将自动识别物品信息并填充表单</p>
+                        <p className="text-ink-mute">识别完成后可以修改信息再发布</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <ImageUploader 
+                    image={uploadedImage} 
+                    onChange={setUploadedImage} 
+                  />
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleImageAnalyze}
+                    disabled={!uploadedImage}
+                    className="w-full btn-primary flex items-center justify-center gap-2 py-3.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Wand2 className="w-5 h-5" />
+                    开始识别
+                  </motion.button>
+                </div>
+              )}
+
+              {imageAiStep === 'analyzing' && (
+                <div className="py-16 text-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary to-primary-deep p-1"
+                  >
+                    <div className="w-full h-full rounded-full bg-canvas flex items-center justify-center">
+                      <Loader2 className="w-10 h-10 text-primary" />
+                    </div>
+                  </motion.div>
+                  <h3 className="text-lg font-semibold text-ink mb-2">AI 正在识别...</h3>
+                  <p className="text-ink-mute">正在分析图片内容，请稍候</p>
+                </div>
+              )}
+
+              {imageAiStep === 'form' && imageResult && (
+                <div className="space-y-6">
+                  <div className="bg-gradient-to-r from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-4 border border-hairline flex items-center gap-3">
+                    <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
+                    <div className="text-sm text-ink-secondary">
+                      <p className="font-medium text-ink">识别成功！</p>
+                      <p className="text-ink-mute">检查信息并发布</p>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <div className="w-full h-32 bg-canvas-soft rounded-xl overflow-hidden border border-hairline">
+                      <img 
+                        src={uploadedImage} 
+                        alt="上传的图片" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-ink-secondary mb-2">
+                      物品标题 <span className="text-ruby">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={imageForm.title}
+                      onChange={(e) => setImageForm({ ...imageForm, title: e.target.value })}
+                      className="input-field"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-ink-secondary mb-2">
+                        物品类别 <span className="text-ruby">*</span>
+                      </label>
+                      <select
+                        value={imageForm.category}
+                        onChange={(e) => setImageForm({ ...imageForm, category: e.target.value as any })}
+                        className="input-field"
+                      >
+                        {CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-ink-secondary mb-2">
+                        颜色
+                      </label>
+                      <select
+                        value={imageForm.color}
+                        onChange={(e) => setImageForm({ ...imageForm, color: e.target.value })}
+                        className="input-field"
+                      >
+                        <option value="">选择颜色</option>
+                        {COLORS.map(color => (
+                          <option key={color} value={color}>{color}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-ink-secondary mb-2">
+                        拾到地点 <span className="text-ruby">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={imageForm.location}
+                        onChange={(e) => setImageForm({ ...imageForm, location: e.target.value })}
+                        placeholder="例如：图书馆三楼"
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-ink-secondary mb-2">
+                        联系方式 <span className="text-ruby">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={imageForm.contact}
+                        onChange={(e) => setImageForm({ ...imageForm, contact: e.target.value })}
+                        placeholder="手机号或微信"
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-ink-secondary mb-2">
+                        拾到日期 <span className="text-ruby">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={imageForm.date}
+                        onChange={(e) => setImageForm({ ...imageForm, date: e.target.value })}
+                        className="input-field"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-ink-secondary mb-2">
+                        大致时间
+                      </label>
+                      <input
+                        type="time"
+                        value={imageForm.time}
+                        onChange={(e) => setImageForm({ ...imageForm, time: e.target.value })}
+                        className="input-field"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-ink-secondary mb-2">
+                      详细描述 <span className="text-ruby">*</span>
+                    </label>
+                    <textarea
+                      required
+                      value={imageForm.description}
+                      onChange={(e) => setImageForm({ ...imageForm, description: e.target.value })}
+                      rows={3}
+                      className="input-field resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-ink-secondary mb-2">
+                      物品特征（可多选）
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {FEATURES.map(feature => (
+                        <button
+                          key={feature}
+                          type="button"
+                          onClick={() => toggleImageFeature(feature)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                            imageForm.features.includes(feature)
+                              ? 'bg-primary text-ink border-transparent shadow-sm'
+                              : 'bg-canvas text-ink-mute border-hairline hover:border-primary/50'
+                          }`}
+                        >
+                          {feature}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-sm font-medium text-ink-secondary mb-3">卡片预览：</p>
+                    <div className="transform scale-90 origin-left">
+                      <LostItemCard
+                        item={{
+                          id: 'preview',
+                          status: '待认领',
+                          createdAt: new Date().toISOString(),
+                          ...imageForm,
+                        }}
+                        index={0}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setImageAiStep('upload')}
+                      className="flex-1 btn-secondary"
+                    >
+                      重新上传
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleImageFormSubmit}
+                      className="flex-1 btn-primary"
+                    >
+                      确认发布
+                    </motion.button>
+                  </div>
+                </div>
+              )}
+
+              {imageAiStep === 'success' && (
+                <div className="py-16 text-center">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 300, delay: 0.1 }}
+                    className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary to-primary-deep flex items-center justify-center shadow-soft"
+                  >
+                    <CheckCircle2 className="w-12 h-12 text-ink" />
+                  </motion.div>
+                  <h3 className="text-xl font-bold text-ink mb-2">发布成功！</h3>
+                  <p className="text-ink-mute">失物信息已发布，正在返回首页...</p>
+                </div>
               )}
             </motion.div>
           )}

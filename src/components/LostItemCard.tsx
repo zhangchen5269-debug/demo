@@ -77,6 +77,16 @@ export default function LostItemCard({ item, index, onFound, onShare, onDetail, 
       
       {/* Main card */}
       <div className="relative bg-canvas backdrop-blur-xl rounded-[20px] border border-hairline shadow-soft overflow-hidden transition-all duration-300 group-hover:shadow-soft-lg">
+        {/* 卡片图片（如果有） */}
+        {item.image && (
+          <div className="w-full h-48 overflow-hidden">
+            <img 
+              src={item.image} 
+              alt={item.title} 
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+          </div>
+        )}
         {/* Card content */}
         <div className="p-6">
           {/* Header */}

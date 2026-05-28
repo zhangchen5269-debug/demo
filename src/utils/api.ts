@@ -1,6 +1,10 @@
 const DEEPSEEK_API_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY || ''
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
 
+// 智谱 GLM API 配置
+const GLM_API_KEY = import.meta.env.VITE_GLM_API_KEY || 'be536801f6fe422ca3771ddea9e84064.8l6MDeTHvQudpOPF'
+const GLM_API_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+
 interface DeepSeekMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
@@ -211,4 +215,271 @@ ${candidateItems.map((item, i) => `${i + 1}. ${item.title} - ${item.description}
     console.error('解析匹配结果失败:', error)
     return []
   }
+}
+
+export interface ImageAnalysisResult {
+   description: string
+   suggestedSearchTerms: string[]
+   itemType: string
+   color: string
+   features: string[]
+ }
+
+export interface ImageRegistrationResult {
+  title: string
+  description: string
+  category: '电子产品' | '证件卡片' | '书籍文具' | '生活用品' | '其他'
+  location: string
+  date: string
+  time: string
+  contact: string
+  color: string
+  features: string[]
+}
+
+/**
+ * 使用 GLM-4.6V 模型识别图片并填充失物表单
+ */
+export async function analyzeImageForRegistration(imageBase64: string): Promise<ImageRegistrationResult> {
+  let processedImage = imageBase64
+  if (!imageBase64.startsWith('data:')) {
+    processedImage = `data:image/jpeg;base64,${imageBase64}`
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+  const now = new Date().toTimeString().slice(0, 5)
+
+  const systemPrompt = `你是一个专业的校园失物图片识别助手。请分析用户上传的图片，识别失物信息并返回 JSON。
+
+要求：
+1. 只返回严格的 JSON 格式，不要其他文字
+2. 确保 JSON 格式正确，无语法错误
+3. 所有字段有合理值，无法确定的用空字符串或默认值
+
+返回字段：
+{
+  "title": "物品标题（简洁，含关键特征）",
+  "description": "物品描述（100字内，含颜色、品牌、型号等）",
+  "category": "分类（电子产品|证件卡片|书籍文具|生活用品|其他）",
+  "location": "丢失地点（如无法确定，填空）",
+  "date": "丢失日期（YYYY-MM-DD，无法确定填今天）",
+  "time": "丢失时间（HH:MM，无法确定填12:00）",
+  "contact": "联系方式（图片中有则提取，否则填'请联系失物招领处'）",
+  "color": "物品颜色（从图片识别）",
+  "features": "物品特征数组（如['全新','有划痕']）"
+}
+
+分类规则：
+- 电子产品：手机、电脑、耳机、充电器、U盘、手表等
+- 证件卡片：身份证、学生证、银行卡、校园卡、钥匙等
+- 书籍文具：书籍、笔记本、笔、尺子、计算器等
+- 生活用品：钱包、水杯、衣物、雨伞、书包等
+- 其他：不属于以上类别的物品
+
+重要：
+- 仔细识别图片中的文字信息，如姓名、学号、电话号码等可能是联系方式
+- 从图片中提取物品颜色、材质、品牌、型号等特征
+- 图片中有品牌标志或文字要提取到描述中
+- 使用中文输出`
+
+  try {
+    const response = await fetch(GLM_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GLM_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'GLM-4.6V',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: systemPrompt
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: processedImage
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 1000,
+        temperature: 0.3,
+        stream: false
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('API 请求失败:', response.status, errorText)
+      throw new Error(`API 请求失败: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    let content = data.choices[0]?.message?.content
+    
+    if (!content) {
+      throw new Error('未获取到有效响应')
+    }
+
+    // 尝试提取 JSON（有时候模型会返回带 markdown 的格式）
+    let jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      content = jsonMatch[0]
+    }
+
+    let parsed: ImageRegistrationResult
+    try {
+      parsed = JSON.parse(content)
+    } catch (parseError) {
+      console.error('JSON 解析失败，返回默认值:', parseError)
+      // JSON 解析失败，返回默认值
+      return {
+        title: '识别失败，请手动填写',
+        description: '请手动描述物品特征',
+        category: '其他',
+        location: '',
+        date: today,
+        time: now,
+        contact: '请联系失物招领处',
+        color: '',
+        features: []
+      }
+    }
+
+    // 验证和填充默认值
+    const validCategories = ['电子产品', '证件卡片', '书籍文具', '生活用品', '其他']
+    return {
+      title: parsed.title || '未知物品',
+      description: parsed.description || '请补充物品描述',
+      category: validCategories.includes(parsed.category) ? parsed.category : '其他',
+      location: parsed.location || '',
+      date: parsed.date || today,
+      time: parsed.time || '12:00',
+      contact: parsed.contact || '请联系失物招领处',
+      color: parsed.color || '',
+      features: parsed.features || []
+    }
+  } catch (error: any) {
+    console.error('图片分析失败:', error)
+    throw new Error(error.message || '图片分析失败，请重试')
+  }
+}
+
+export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAnalysisResult> {
+  // 确保 base64 图片有正确的 data URI 前缀
+  let processedImage = imageBase64
+  if (!imageBase64.startsWith('data:')) {
+    processedImage = `data:image/jpeg;base64,${imageBase64}`
+  }
+
+  try {
+    const response = await fetch(GLM_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GLM_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'GLM-4.6V',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: '这是一张校园失物图片，请仔细分析图片中的物品，包括：物品类型、主要颜色、材质、显著特征、品牌、文字信息等。输出一段清晰、自然、适合用于失物招领搜索的描述文本。'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: processedImage
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 600,
+        temperature: 0.3,
+        stream: false
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('API 请求失败:', response.status, errorText)
+      throw new Error(`API 请求失败: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const content = data.choices[0]?.message?.content
+    
+    if (!content) {
+      throw new Error('未获取到有效响应')
+    }
+
+    // 尝试解析 JSON 格式
+    let parsed: any = null
+    try {
+      parsed = JSON.parse(content)
+    } catch (parseError) {
+      // JSON 解析失败，使用纯文本描述
+      console.log('图片分析返回纯文本描述，直接使用')
+    }
+
+    if (parsed) {
+      // 成功解析 JSON
+      return {
+        description: parsed.description || parsed.描述 || content,
+        suggestedSearchTerms: parsed.suggestedSearchTerms || parsed.建议搜索词 || [],
+        itemType: parsed.itemType || parsed.物品类型 || '其他',
+        color: parsed.color || parsed.颜色 || '',
+        features: parsed.features || parsed.特征 || []
+      }
+    } else {
+      // 使用纯文本描述
+      return {
+        description: content,
+        suggestedSearchTerms: [],
+        itemType: extractItemType(content),
+        color: extractColor(content),
+        features: []
+      }
+    }
+  } catch (error: any) {
+    console.error('图片分析失败:', error)
+    throw new Error(error.message || '图片分析失败，请重试')
+  }
+}
+ 
+ // 从文本描述中提取物品类型
+ function extractItemType(text: string): string {
+   const keywords = ['手机', '耳机', '钱包', '钥匙', '身份证', '学生证', '银行卡', '书籍', '笔记本', '水杯', '书包', '背包', '雨伞', '钥匙', '充电宝', '数据线', 'U盘', '手表', '眼镜', '帽子', '围巾', '手套', '衣服', '鞋子', '钱包', '卡片']
+   for (const keyword of keywords) {
+     if (text.includes(keyword)) {
+       return keyword
+     }
+   }
+   return '其他'
+ }
+ 
+ // 从文本描述中提取颜色
+ function extractColor(text: string): string {
+   const colors = ['黑色', '白色', '银色', '金色', '蓝色', '红色', '绿色', '黄色', '橙色', '紫色', '粉色', '棕色', '灰色']
+   for (const color of colors) {
+     if (text.includes(color)) {
+       return color
+     }
+   }
+   return ''
+ }
+
+export function generateSearchQueryFromImageAnalysis(result: ImageAnalysisResult): string {
+  // 直接使用描述作为搜索关键词，避免拼接的问题
+  return result.description.trim()
 }

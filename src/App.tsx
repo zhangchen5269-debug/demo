@@ -5,6 +5,7 @@ import SearchBar from './components/SearchBar'
 import LostItemList from './components/LostItemList'
 import LostItemModal from './components/LostItemModal'
 import DetailModal from './components/DetailModal'
+import ImageSearchModal from './components/ImageSearchModal'
 import { useSmartSearch } from './hooks/useSmartSearch'
 import { LostItem, LostItemFormData } from './types/lostItem'
 import { motion } from 'framer-motion'
@@ -12,6 +13,7 @@ import { motion } from 'framer-motion'
 function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [isImageSearchOpen, setIsImageSearchOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<LostItem | null>(null)
 
   const { 
@@ -50,6 +52,13 @@ function App() {
     setIsDetailModalOpen(true)
   }
 
+  const handleImageSearch = (searchQuery: string, fromImage: boolean = false) => {
+    if (fromImage) {
+      setSearchMode('ai')
+    }
+    handleSearch(searchQuery)
+  }
+
   return (
     <div className="min-h-screen">
       <BackgroundDecorations />
@@ -72,6 +81,7 @@ function App() {
           isSearching={isSearching}
           searchMode={searchMode}
           onModeChange={setSearchMode}
+          onImageSearch={() => setIsImageSearchOpen(true)}
         />
 
         <div className="mb-6 flex items-center justify-between">
@@ -123,6 +133,12 @@ function App() {
           setIsDetailModalOpen(false)
           setSelectedItem(null)
         }}
+      />
+
+      <ImageSearchModal
+        isOpen={isImageSearchOpen}
+        onClose={() => setIsImageSearchOpen(false)}
+        onSearch={handleImageSearch}
       />
     </div>
   )
