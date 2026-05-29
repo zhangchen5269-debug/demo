@@ -242,6 +242,7 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
       time: item.time,
       contact: item.contact,
       image: aiImage,
+      features: []
     })
     
     setAiStep('success')
