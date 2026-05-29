@@ -17,7 +17,7 @@ export default function LostItemList({
   items, 
   loading = false, 
   highlightedIds = [],
-  onItemClick, 
+  _onItemClick, 
   onFound, 
   onShare, 
   onDetail 

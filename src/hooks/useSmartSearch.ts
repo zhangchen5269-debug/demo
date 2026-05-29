@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLocalStorage } from './useLocalStorage'
 import { LostItem, LostItemFormData } from '../types/lostItem'
@@ -88,7 +89,6 @@ function simpleKeywordMatch(query: string, items: LostItem[]): string[] {
     const titleLower = item.title.toLowerCase()
     const descriptionLower = item.description.toLowerCase()
     const locationLower = item.location.toLowerCase()
-    const searchText = `${titleLower} ${descriptionLower} ${locationLower}`
     
     let score = 0
     let hasItemTypeMatch = false

@@ -1,7 +1,8 @@
+// DeepSeek API 配置
 const DEEPSEEK_API_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY || ''
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions'
 
-// 智谱 GLM API 配置
+// 智谱 GLM API 配置（仅用于图片识别）
 const GLM_API_KEY = import.meta.env.VITE_GLM_API_KEY || 'be536801f6fe422ca3771ddea9e84064.8l6MDeTHvQudpOPF'
 const GLM_API_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
 
@@ -41,7 +42,8 @@ async function callDeepSeekAPI(messages: DeepSeekMessage[]): Promise<string> {
     })
 
     if (!response.ok) {
-      throw new Error(`API 请求失败: ${response.status} ${response.statusText}`)
+      const errorText = await response.text()
+      throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorText}`)
     }
 
     const data = await response.json()
@@ -117,7 +119,8 @@ export async function parseLostItem(text: string): Promise<ParsedLostItem> {
     })
 
     if (!response.ok) {
-      throw new Error(`API 请求失败: ${response.status} ${response.statusText}`)
+      const errorText = await response.text()
+      throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorText}`)
     }
 
     const data = await response.json()
@@ -238,7 +241,7 @@ export interface ImageRegistrationResult {
 }
 
 /**
- * 使用 GLM-4.6V 模型识别图片并填充失物表单
+ * 使用 GLM-4.6V 模型识别图片并填充失物表单（仅图片识别使用 GLM）
  */
 export async function analyzeImageForRegistration(imageBase64: string): Promise<ImageRegistrationResult> {
   let processedImage = imageBase64
@@ -327,7 +330,6 @@ export async function analyzeImageForRegistration(imageBase64: string): Promise<
       throw new Error('未获取到有效响应')
     }
 
-    // 尝试提取 JSON（有时候模型会返回带 markdown 的格式）
     let jsonMatch = content.match(/\{[\s\S]*\}/)
     if (jsonMatch) {
       content = jsonMatch[0]
@@ -338,7 +340,6 @@ export async function analyzeImageForRegistration(imageBase64: string): Promise<
       parsed = JSON.parse(content)
     } catch (parseError) {
       console.error('JSON 解析失败，返回默认值:', parseError)
-      // JSON 解析失败，返回默认值
       return {
         title: '识别失败，请手动填写',
         description: '请手动描述物品特征',
@@ -352,7 +353,6 @@ export async function analyzeImageForRegistration(imageBase64: string): Promise<
       }
     }
 
-    // 验证和填充默认值
     const validCategories = ['电子产品', '证件卡片', '书籍文具', '生活用品', '其他']
     return {
       title: parsed.title || '未知物品',
@@ -372,7 +372,6 @@ export async function analyzeImageForRegistration(imageBase64: string): Promise<
 }
 
 export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAnalysisResult> {
-  // 确保 base64 图片有正确的 data URI 前缀
   let processedImage = imageBase64
   if (!imageBase64.startsWith('data:')) {
     processedImage = `data:image/jpeg;base64,${imageBase64}`
@@ -423,17 +422,14 @@ export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAn
       throw new Error('未获取到有效响应')
     }
 
-    // 尝试解析 JSON 格式
     let parsed: any = null
     try {
       parsed = JSON.parse(content)
     } catch (parseError) {
-      // JSON 解析失败，使用纯文本描述
       console.log('图片分析返回纯文本描述，直接使用')
     }
 
     if (parsed) {
-      // 成功解析 JSON
       return {
         description: parsed.description || parsed.描述 || content,
         suggestedSearchTerms: parsed.suggestedSearchTerms || parsed.建议搜索词 || [],
@@ -442,7 +438,6 @@ export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAn
         features: parsed.features || parsed.特征 || []
       }
     } else {
-      // 使用纯文本描述
       return {
         description: content,
         suggestedSearchTerms: [],
@@ -457,7 +452,6 @@ export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAn
   }
 }
  
- // 从文本描述中提取物品类型
  function extractItemType(text: string): string {
    const keywords = ['手机', '耳机', '钱包', '钥匙', '身份证', '学生证', '银行卡', '书籍', '笔记本', '水杯', '书包', '背包', '雨伞', '钥匙', '充电宝', '数据线', 'U盘', '手表', '眼镜', '帽子', '围巾', '手套', '衣服', '鞋子', '钱包', '卡片']
    for (const keyword of keywords) {
@@ -468,7 +462,6 @@ export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAn
    return '其他'
  }
  
- // 从文本描述中提取颜色
  function extractColor(text: string): string {
    const colors = ['黑色', '白色', '银色', '金色', '蓝色', '红色', '绿色', '黄色', '橙色', '紫色', '粉色', '棕色', '灰色']
    for (const color of colors) {
@@ -480,6 +473,5 @@ export async function analyzeLostItemImage(imageBase64: string): Promise<ImageAn
  }
 
 export function generateSearchQueryFromImageAnalysis(result: ImageAnalysisResult): string {
-  // 直接使用描述作为搜索关键词，避免拼接的问题
   return result.description.trim()
 }

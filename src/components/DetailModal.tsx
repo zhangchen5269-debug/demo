@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { MapPin, Calendar, Clock, Phone, Tag, CheckCircle } from 'lucide-react'
+import { MapPin, Calendar, Phone, Tag, CheckCircle } from 'lucide-react'
 import Modal from './Modal'
 import { LostItem } from '../types/lostItem'
 

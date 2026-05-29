@@ -23,4 +23,5 @@ export interface LostItemFormData {
   time: string
   contact: string
   image?: string
+  features?: string[]
 }
