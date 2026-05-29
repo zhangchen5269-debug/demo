@@ -7,7 +7,6 @@ interface LostItemListProps {
   items: LostItem[]
   loading?: boolean
   highlightedIds?: string[]
-  onItemClick?: (item: LostItem) => void
   onFound?: (item: LostItem) => void
   onShare?: (item: LostItem) => void
   onDetail?: (item: LostItem) => void
@@ -17,7 +16,6 @@ export default function LostItemList({
   items, 
   loading = false, 
   highlightedIds = [],
-  _onItemClick, 
   onFound, 
   onShare, 
   onDetail 
