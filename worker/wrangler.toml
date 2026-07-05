@@ -1,0 +1,6 @@
+name = "mindlink-api-proxy"
+main = "worker.js"
+compatibility_date = "2025-07-01"
+
+# 免费计划：每天 10 万次请求，足够校园项目使用
+# API Key 通过 wrangler secret put GLM_API_KEY 设置，不写在这里

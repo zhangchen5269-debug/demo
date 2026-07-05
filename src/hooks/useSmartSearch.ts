@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useLocalStorage } from './useLocalStorage'
 import { LostItem, LostItemFormData } from '../types/lostItem'
+import { semanticSearchItems } from '../utils/api'
 
 const SAMPLE_ITEMS: LostItem[] = [
   {
@@ -249,128 +250,13 @@ export function useSmartSearch() {
 }
 
 async function semanticSearchWithAI(query: string, items: LostItem[]): Promise<string[]> {
-  const DEEPSEEK_API_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY
-  
-  if (!DEEPSEEK_API_KEY) {
-    console.warn('DeepSeek API Key not configured, using keyword search')
-    return simpleKeywordMatch(query, items)
-  }
-
   try {
     console.log('AI Search: Starting semantic search for:', query)
-    
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          {
-            role: 'system',
-            content: `你是一个智能失物招领搜索助手。用户输入了查询，你需要判断这个查询与候选失物列表的匹配程度。
-
-【核心规则】
-1. 只返回JSON对象，不要包含其他文字
-2. 返回匹配度最高的Top 3物品ID，按匹配度从高到低排序
-3. JSON格式：{"matches": [{"id": "物品ID", "score": 0-100的分数}]}
-4. 【最重要】只返回物品列表中真实存在的物品ID，绝对不要编造任何ID！
-
-【评分标准】
-搜索"蓝牙耳机"时：
-- 物品名称包含"蓝牙耳机"或"耳机"：80-100分
-- 物品名称包含"图书馆"但不含"耳机"相关词：0分（不匹配）
-- 物品描述中提到"图书馆"但不提"耳机"：0分
-
-搜索任何物品时：
-- 物品名称完全匹配或高度相关：80-100分
-- 物品名称部分匹配（如搜索"耳机"，物品名是"苹果耳机"）：70-90分
-- 只有地点匹配（搜索"耳机"，物品是"图书馆的书"）：0分
-- 只有类别匹配：50-60分
-
-【严格禁止】
-- 不能因为查询和物品都在"图书馆"就认为匹配
-- 不能因为查询有"耳机"就匹配任何带"耳"字的物品
-- 不能因为查询有"手机"就匹配任何物品
-- 不能因为查询有"书"就匹配所有书籍类物品
-
-【物品列表】
-${items.map(item => `ID:${item.id} | 名称:${item.title} | 描述:${item.description} | 地点:${item.location}`).join('\n')}
-
-【用户查询】
-${query}
-
-请严格按评分标准判断，只返回真正匹配的物品ID。`
-          },
-          {
-            role: 'user',
-            content: `请分析用户查询与物品列表的匹配度，返回Top 3的物品ID和分数`
-          }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.3,
-        max_tokens: 500,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('AI Search: API request failed:', response.status, errorText)
-      throw new Error(`API request failed: ${response.status}`)
-    }
-
-    const data = await response.json()
-    const content = data.choices[0]?.message?.content
-    
-    console.log('AI Search: Response content:', content)
-    
-    if (!content) {
-      console.warn('AI Search: Empty response content, falling back to keyword')
-      return simpleKeywordMatch(query, items)
-    }
-
-    try {
-      const result = JSON.parse(content)
-      console.log('AI Search: Parsed result:', result)
-      
-      const matches = result.matches || result.Matches || []
-      console.log('AI Search: Matches array:', matches)
-      
-      // 过滤无效的 ID，只保留存在的物品 ID
-      const validItemIds = items.map(item => item.id)
-      console.log('AI Search: Valid item IDs:', validItemIds)
-      
-      const filteredMatches = matches
-        .filter((m: any) => {
-          if (!m || typeof m.id !== 'string') {
-            console.log('AI Search: Filtering out invalid match (bad format):', m)
-            return false
-          }
-          if (!validItemIds.includes(m.id)) {
-            console.log('AI Search: Filtering out invalid match (ID not found):', m)
-            return false
-          }
-          if (m.score < 60) {
-            console.log('AI Search: Filtering out invalid match (score too low):', m)
-            return false
-          }
-          return true
-        })
-        .slice(0, 3)
-        .map((m: any) => m.id)
-      
-      console.log('AI Search: Final valid matches:', filteredMatches)
-      return filteredMatches
-      
-    } catch (parseError) {
-      console.error('AI Search: Failed to parse JSON:', parseError)
-      return simpleKeywordMatch(query, items)
-    }
-
+    const results = await semanticSearchItems(query, items)
+    console.log('AI Search: Results:', results)
+    return results
   } catch (error) {
-    console.error('Semantic search failed:', error)
+    console.error('AI semantic search failed, falling back to keyword:', error)
     return simpleKeywordMatch(query, items)
   }
 }
