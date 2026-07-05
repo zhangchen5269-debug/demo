@@ -1,16 +1,22 @@
 // ============================================================
-// MindLink API 层 — 统一通过代理调用智谱 GLM-5.2
+// MindLink API 层 — 统一通过代理调用智谱 GLM 平台
 //
 // 架构: 浏览器 → Cloudflare Worker (代理) → 智谱 GLM API
 // Worker 持有 API Key，前端代码中没有任何密钥。
+//
+// 模型分工：
+//   GLM-5.2（纯文本）→ 解析、描述、搜索、匹配等文字任务
+//   GLM-4.6V（多模态）→ 图片识别和图片搜索
 // ============================================================
 
 /** 代理地址：部署 Cloudflare Worker 后替换为实际 URL */
 const API_PROXY_URL =
   import.meta.env.VITE_API_PROXY_URL || 'http://localhost:8787'
 
-/** 统一模型 ID */
-const MODEL_ID = 'GLM-5.2'
+/** 文本模型 */
+const TEXT_MODEL = 'GLM-5.2'
+/** 多模态模型（支持图片） */
+const VISION_MODEL = 'GLM-4.6V'
 
 // ---- 类型定义 ----
 
@@ -62,13 +68,15 @@ interface GLMCallOptions {
   temperature?: number
   maxTokens?: number
   responseFormat?: 'text' | 'json_object'
+  /** 覆盖默认文本模型，例如图片任务传 VISION_MODEL */
+  model?: string
 }
 
 async function callGLMAPI(options: GLMCallOptions): Promise<string> {
-  const { messages, temperature = 0.7, maxTokens = 2000, responseFormat } = options
+  const { messages, temperature = 0.7, maxTokens = 2000, responseFormat, model } = options
 
   const body: Record<string, unknown> = {
-    model: MODEL_ID,
+    model: model || TEXT_MODEL,
     messages,
     temperature,
     max_tokens: maxTokens,
@@ -414,6 +422,7 @@ export async function analyzeImageForRegistration(
       ],
       temperature: 0.3,
       maxTokens: 1000,
+      model: VISION_MODEL,
     })
 
     // 尝试从返回内容中提取 JSON
@@ -499,6 +508,7 @@ export async function analyzeLostItemImage(
       ],
       temperature: 0.3,
       maxTokens: 600,
+      model: VISION_MODEL,
     })
 
     // 尝试按 JSON 解析，失败就当纯文本描述
