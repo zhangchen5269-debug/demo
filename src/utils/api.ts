@@ -5,7 +5,7 @@
 // Worker 持有 API Key，前端代码中没有任何密钥。
 //
 // 模型分工：
-//   glm-4.5-air（高性价比文本）→ 解析、描述、搜索、匹配等文字任务
+//   glm-4.7（旗舰文本）→ 解析、描述、搜索、匹配等文字任务
 //   glm-4.6v-flash（免费多模态）→ 图片识别和图片搜索
 // ============================================================
 
@@ -13,8 +13,8 @@
 const API_PROXY_URL =
   import.meta.env.VITE_API_PROXY_URL || 'http://localhost:8787'
 
-/** 文本模型（高性价比，128K 上下文，宽松速率限制） */
-const TEXT_MODEL = 'glm-4.5-air'
+/** 文本模型（GLM-4.7 旗舰，速率限制宽松，¥2/¥8 每百万 token） */
+const TEXT_MODEL = 'glm-4.7'
 /** 多模态模型（免费，支持图片） */
 const VISION_MODEL = 'glm-4.6v-flash'
 
@@ -73,6 +73,9 @@ interface GLMCallOptions {
 }
 
 async function callGLMAPI(options: GLMCallOptions): Promise<string> {
+  // 节流：确保两次调用之间至少间隔 2 秒
+  await throttleWait()
+
   const { messages, temperature = 0.7, maxTokens = 2000, responseFormat, model } = options
 
   const body: Record<string, unknown> = {
@@ -622,33 +625,34 @@ export function generateSearchQueryFromImageAnalysis(
 export type AIStatus = 'online' | 'degraded' | 'offline' | 'checking'
 
 /**
- * 检测 AI 服务是否可用
- * - online: 代理通 + API Key 有效
- * - degraded: 代理通但 API Key 无效（401/403）
- * - offline: 代理不可达（网络错误）
+ * 检测 AI 服务是否可用（OPTIONS 预检不消耗 API 额度）
+ * - online: 代理可达
+ * - offline: 代理不可达
  */
 export async function checkAIHealth(): Promise<AIStatus> {
   try {
     const response = await fetch(API_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: TEXT_MODEL,
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
-      }),
+      method: 'OPTIONS',
       signal: AbortSignal.timeout(5000),
     })
 
-    if (response.ok) return 'online'
-
-    // 401/403 → API Key 问题
-    if (response.status === 401 || response.status === 403) {
-      return 'degraded'
-    }
-
+    if (response.ok || response.status === 204) return 'online'
     return 'offline'
   } catch {
     return 'offline'
   }
+}
+
+// ---- 请求节流 ----
+
+let lastAPICallTime = 0
+const MIN_INTERVAL_MS = 2000 // 两次 API 调用最小间隔 2 秒
+
+async function throttleWait(): Promise<void> {
+  const now = Date.now()
+  const elapsed = now - lastAPICallTime
+  if (elapsed < MIN_INTERVAL_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_INTERVAL_MS - elapsed))
+  }
+  lastAPICallTime = Date.now()
 }

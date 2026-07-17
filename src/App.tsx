@@ -43,9 +43,7 @@ function App() {
   }, [searchMode, setSearchMode])
 
   useEffect(() => {
-    // 延迟 2 秒再检查，避免和其他 API 调用冲突
-    const timer = setTimeout(checkStatus, 2000)
-    return () => clearTimeout(timer)
+    checkStatus()
   }, [])
 
   // AI 不可用时不允许切换到 AI 模式
