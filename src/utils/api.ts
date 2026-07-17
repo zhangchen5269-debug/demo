@@ -5,18 +5,18 @@
 // Worker 持有 API Key，前端代码中没有任何密钥。
 //
 // 模型分工：
-//   glm-4.7（旗舰文本）→ 解析、描述、搜索、匹配等文字任务
-//   glm-4.6v-flash（免费多模态）→ 图片识别和图片搜索
+//   GLM-4-Air（并发 100）→ 解析、描述、搜索、匹配等文字任务
+//   GLM-4.6V（并发 10）→ 图片识别和图片搜索
 // ============================================================
 
 /** 代理地址：部署 Cloudflare Worker 后替换为实际 URL */
 const API_PROXY_URL =
   import.meta.env.VITE_API_PROXY_URL || 'http://localhost:8787'
 
-/** 文本模型（GLM-4.7 旗舰，速率限制宽松，¥2/¥8 每百万 token） */
-const TEXT_MODEL = 'glm-4.7'
-/** 多模态模型（免费，支持图片） */
-const VISION_MODEL = 'glm-4.6v-flash'
+/** 文本模型（并发 100，不用担心限流） */
+const TEXT_MODEL = 'GLM-4-Air'
+/** 多模态模型（并发 10，支持图片） */
+const VISION_MODEL = 'GLM-4.6V'
 
 // ---- 类型定义 ----
 
@@ -73,48 +73,52 @@ interface GLMCallOptions {
 }
 
 async function callGLMAPI(options: GLMCallOptions): Promise<string> {
-  // 节流：确保两次调用之间至少间隔 2 秒
+  // 节流：确保两次调用之间至少间隔 5 秒，且同时只有一个请求
   await throttleWait()
 
-  const { messages, temperature = 0.7, maxTokens = 2000, responseFormat, model } = options
+  try {
+    const { messages, temperature = 0.7, maxTokens = 2000, responseFormat, model } = options
 
-  const body: Record<string, unknown> = {
-    model: model || TEXT_MODEL,
-    messages,
-    temperature,
-    max_tokens: maxTokens,
-  }
-
-  if (responseFormat === 'json_object') {
-    body.response_format = { type: 'json_object' }
-  }
-
-  const response = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-
-    // 429 速率限制 → 给出友好提示
-    if (response.status === 429) {
-      throw new Error('请求太频繁，请稍后再试')
+    const body: Record<string, unknown> = {
+      model: model || TEXT_MODEL,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
     }
 
-    throw new Error(
-      `API 请求失败: ${response.status} ${response.statusText} — ${errorText}`
-    )
+    if (responseFormat === 'json_object') {
+      body.response_format = { type: 'json_object' }
+    }
+
+    const response = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+
+      // 429 速率限制 → 给出友好提示
+      if (response.status === 429) {
+        throw new Error('请求太频繁，请稍后再试')
+      }
+
+      throw new Error(
+        `API 请求失败: ${response.status} ${response.statusText} — ${errorText}`
+      )
+    }
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(`代理层错误: ${data.error} — ${data.detail || ''}`)
+    }
+
+    return data.choices?.[0]?.message?.content || '未获取到有效响应'
+  } finally {
+    isCallInFlight = false
   }
-
-  const data = await response.json()
-
-  if (data.error) {
-    throw new Error(`代理层错误: ${data.error} — ${data.detail || ''}`)
-  }
-
-  return data.choices?.[0]?.message?.content || '未获取到有效响应'
 }
 
 // ---- 文本解析 Prompt ----
@@ -646,13 +650,20 @@ export async function checkAIHealth(): Promise<AIStatus> {
 // ---- 请求节流 ----
 
 let lastAPICallTime = 0
-const MIN_INTERVAL_MS = 2000 // 两次 API 调用最小间隔 2 秒
+let isCallInFlight = false
+const MIN_INTERVAL_MS = 1500 // 两次 API 调用最小间隔 1.5 秒
 
 async function throttleWait(): Promise<void> {
+  // 等待正在执行的请求完成
+  while (isCallInFlight) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  // 等待间隔冷却
   const now = Date.now()
   const elapsed = now - lastAPICallTime
   if (elapsed < MIN_INTERVAL_MS) {
     await new Promise(resolve => setTimeout(resolve, MIN_INTERVAL_MS - elapsed))
   }
+  isCallInFlight = true
   lastAPICallTime = Date.now()
 }
