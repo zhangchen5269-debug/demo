@@ -212,13 +212,16 @@ export function useSmartSearch() {
           setMatchedIds(matched)
         } catch (error) {
           console.error('AI search failed, falling back to keyword:', error)
+          // 速率限制或任何错误都静默降级到关键词搜索
           const matches = simpleKeywordMatch(searchQuery, items)
           console.log('Fallback keyword matches:', matches)
           setMatchedIds(matches)
+          // 切回关键词模式避免重复触发 AI 调用
+          setSearchMode('keyword')
         }
         setIsSearching(false)
       }
-    }, 500)
+    }, 800)
   }, [items, searchMode])
 
   /** 图片搜索：用关键字后台搜索，不在输入框显示文字 */

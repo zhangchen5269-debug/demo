@@ -5,7 +5,7 @@
 // Worker 持有 API Key，前端代码中没有任何密钥。
 //
 // 模型分工：
-//   glm-4.7-flash（免费文本）→ 解析、描述、搜索、匹配等文字任务
+//   glm-4.5-air（高性价比文本）→ 解析、描述、搜索、匹配等文字任务
 //   glm-4.6v-flash（免费多模态）→ 图片识别和图片搜索
 // ============================================================
 
@@ -13,8 +13,8 @@
 const API_PROXY_URL =
   import.meta.env.VITE_API_PROXY_URL || 'http://localhost:8787'
 
-/** 文本模型（免费，200K 上下文） */
-const TEXT_MODEL = 'glm-4.7-flash'
+/** 文本模型（高性价比，128K 上下文，宽松速率限制） */
+const TEXT_MODEL = 'glm-4.5-air'
 /** 多模态模型（免费，支持图片） */
 const VISION_MODEL = 'glm-4.6v-flash'
 
@@ -94,6 +94,12 @@ async function callGLMAPI(options: GLMCallOptions): Promise<string> {
 
   if (!response.ok) {
     const errorText = await response.text()
+
+    // 429 速率限制 → 给出友好提示
+    if (response.status === 429) {
+      throw new Error('请求太频繁，请稍后再试')
+    }
+
     throw new Error(
       `API 请求失败: ${response.status} ${response.statusText} — ${errorText}`
     )
