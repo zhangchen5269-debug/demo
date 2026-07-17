@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Header from './components/Header'
 import BackgroundDecorations from './components/BackgroundDecorations'
 import SearchBar from './components/SearchBar'
@@ -9,24 +9,51 @@ import ImageSearchModal from './components/ImageSearchModal'
 import { useSmartSearch } from './hooks/useSmartSearch'
 import { LostItem, LostItemFormData } from './types/lostItem'
 import { motion } from 'framer-motion'
+import { checkAIHealth, AIStatus } from './utils/api'
 
 function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [isImageSearchOpen, setIsImageSearchOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<LostItem | null>(null)
+  const [aiStatus, setAIStatus] = useState<AIStatus>('checking')
 
-  const { 
-    items, 
-    query, 
-    isSearching, 
-    matchedIds, 
-    searchMode, 
+  const {
+    items,
+    query,
+    isSearching,
+    matchedIds,
+    searchMode,
     setSearchMode,
-    addItem, 
+    addItem,
     searchItems,
-    handleSearch 
+    handleSearch
   } = useSmartSearch()
+
+  // 启动时检查 AI 健康状态
+  const checkStatus = useCallback(async () => {
+    setAIStatus('checking')
+    const status = await checkAIHealth()
+    setAIStatus(status)
+    // AI 不可用时强制切回关键词模式
+    if (status !== 'online' && searchMode === 'ai') {
+      setSearchMode('keyword')
+    }
+  }, [searchMode, setSearchMode])
+
+  useEffect(() => {
+    checkStatus()
+  }, [])
+
+  // AI 不可用时不允许切换到 AI 模式
+  const handleModeChange = useCallback((mode: 'keyword' | 'ai') => {
+    if (mode === 'ai' && aiStatus !== 'online') {
+      // 触发重新检查（可能是暂时性故障）
+      checkStatus()
+      return
+    }
+    setSearchMode(mode)
+  }, [aiStatus, setSearchMode, checkStatus])
 
   // AI 模式时只显示匹配的物品；关键词模式时用 searchItems 过滤
   const filteredItems = query.trim() 
@@ -75,13 +102,14 @@ function App() {
           <p className="text-ink-mute">帮助失主快速找回遗失物品</p>
         </motion.div>
 
-        <SearchBar 
-          value={query} 
+        <SearchBar
+          value={query}
           onChange={handleSearch}
           isSearching={isSearching}
           searchMode={searchMode}
-          onModeChange={setSearchMode}
+          onModeChange={handleModeChange}
           onImageSearch={() => setIsImageSearchOpen(true)}
+          aiStatus={aiStatus}
         />
 
         <div className="mb-6 flex items-center justify-between">
@@ -124,6 +152,7 @@ function App() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleAddItem}
+        aiStatus={aiStatus}
       />
 
       <DetailModal

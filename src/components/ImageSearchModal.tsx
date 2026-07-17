@@ -67,19 +67,28 @@ export default function ImageSearchModal({ isOpen, onClose, onSearch }: ImageSea
 
   const handleAnalyze = async () => {
     if (!image) return
-    
+
     setStep('analyzing')
     setError('')
-    
+
     try {
       const result = await analyzeLostItemImage(image)
       setAnalysisResult(result)
       const query = generateSearchQueryFromImageAnalysis(result)
       setEditedQuery(query)
       setStep('result')
-    } catch (err: any) {
-      console.error('图片分析失败:', err)
-      setError(err.message || '图片分析失败，请重试')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '图片分析失败'
+
+      if (msg.includes('401') || msg.includes('过期') || msg.includes('认证')) {
+        setError('AI 密钥已过期，请联系管理员更新密钥。')
+      } else if (msg.includes('fetch') || msg.includes('网络') || msg.includes('Failed to fetch')) {
+        setError('无法连接 AI 服务，请检查网络连接或代理设置。')
+      } else {
+        setError(`图片分析失败：${msg}`)
+      }
+
+      console.error('图片分析失败:', msg)
       setStep('upload')
     }
   }

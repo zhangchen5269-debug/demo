@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Pencil, 
-  Sparkles, 
-  MapPin, 
-  Calendar, 
-  Clock, 
-  User, 
+import {
+  Pencil,
+  Sparkles,
+  MapPin,
+  Calendar,
+  Clock,
+  User,
   Tag,
   Palette,
   FileText,
@@ -18,17 +18,20 @@ import {
   X,
   Upload,
   Image as ImageIcon,
-  Camera
+  Camera,
+  AlertCircle,
+  WifiOff
 } from 'lucide-react'
 import Modal from './Modal'
 import LostItemCard from './LostItemCard'
 import { LostItemFormData } from '../types/lostItem'
-import { parseLostItem, ParsedLostItem, analyzeImageForRegistration, ImageRegistrationResult } from '../utils/api'
+import { parseLostItem, ParsedLostItem, analyzeImageForRegistration, ImageRegistrationResult, AIStatus } from '../utils/api'
 
 interface LostItemModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (data: LostItemFormData) => void
+  aiStatus?: AIStatus
 }
 
 type TabType = 'manual' | 'ai-text' | 'ai-image'
@@ -123,8 +126,11 @@ function ImageUploader({
   )
 }
 
-export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemModalProps) {
+export default function LostItemModal({ isOpen, onClose, onSubmit, aiStatus = 'checking' }: LostItemModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('manual')
+
+  const [aiError, setAiError] = useState<string>('')
+  const [imageAiError, setImageAiError] = useState<string>('')
   
   const [manualForm, setManualForm] = useState<LostItemFormData & { color: string; features: string[] }>({
     title: '',
@@ -213,17 +219,27 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
   const handleAIParse = async () => {
     if (!aiInput.trim()) return
     setAiStep('parsing')
-    
+    setAiError('')
+
     try {
       const result = await parseLostItem(aiInput)
       const today = new Date().toISOString().split('T')[0]
       setParsedItem(result)
       setEditableItem({ ...result, date: today })
       setAiStep('preview')
-    } catch (error) {
-      console.error('Parse failed:', error)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '解析失败'
+      console.error('Parse failed:', msg)
+
+      if (msg.includes('401') || msg.includes('过期') || msg.includes('认证')) {
+        setAiError('AI 密钥已过期，请联系管理员更新。你可以先用「手动填写」标签页登记。')
+      } else if (msg.includes('fetch') || msg.includes('网络') || msg.includes('Failed to fetch')) {
+        setAiError('无法连接 AI 服务，请检查网络。你可以先用「手动填写」标签页登记。')
+      } else {
+        setAiError(`AI 解析失败：${msg}。请重试或切换到手动填写。`)
+      }
+
       setAiStep('input')
-      alert('解析失败，请重试或使用手动填写')
     }
   }
 
@@ -255,7 +271,8 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
   const handleImageAnalyze = async () => {
     if (!uploadedImage) return
     setImageAiStep('analyzing')
-    
+    setImageAiError('')
+
     try {
       const result = await analyzeImageForRegistration(uploadedImage)
       setImageResult(result)
@@ -272,10 +289,19 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
         features: result.features
       })
       setImageAiStep('form')
-    } catch (error) {
-      console.error('图像分析失败:', error)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '图像分析失败'
+      console.error('图像分析失败:', msg)
+
+      if (msg.includes('401') || msg.includes('过期') || msg.includes('认证')) {
+        setImageAiError('AI 密钥已过期，请联系管理员更新。你可以先用「手动填写」标签页登记。')
+      } else if (msg.includes('fetch') || msg.includes('网络') || msg.includes('Failed to fetch')) {
+        setImageAiError('无法连接 AI 服务，请检查网络。你可以先用「手动填写」标签页登记。')
+      } else {
+        setImageAiError(`图像分析失败：${msg}。请重试或切换到手动填写。`)
+      }
+
       setImageAiStep('upload')
-      alert('图像分析失败，请重试或使用其他方式')
     }
   }
 
@@ -545,6 +571,56 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
             >
               {aiStep === 'input' && (
                 <div className="space-y-6">
+                  {/* AI 状态警告 */}
+                  {aiStatus !== 'online' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-amber-50 border border-amber-200 rounded-xl p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        {aiStatus === 'degraded' ? (
+                          <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <WifiOff className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-ink mb-1">
+                            {aiStatus === 'degraded' ? 'AI 密钥已过期' : 'AI 服务未连接'}
+                          </p>
+                          <p className="text-xs text-ink-mute">
+                            {aiStatus === 'degraded'
+                              ? '智能解析暂时不可用，建议切换到「手动填写」标签页。'
+                              : '无法连接 AI 服务，请检查网络或代理设置。'}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* 错误消息 */}
+                  {aiError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-red-50 border border-red-200 rounded-xl p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm text-red-700">{aiError}</p>
+                          <button
+                            type="button"
+                            onClick={() => { setAiError(''); setActiveTab('manual') }}
+                            className="text-xs text-primary font-medium hover:text-primary-deep transition-colors mt-1.5"
+                          >
+                            切换到手动填写 →
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div className="bg-gradient-to-br from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-5 border border-hairline">
                     <div className="flex items-start gap-3">
                       <Sparkles className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -574,9 +650,9 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                       <ImageIcon className="w-4 h-4 inline mr-1" />
                       添加图片（可选）
                     </label>
-                    <ImageUploader 
-                      image={aiImage} 
-                      onChange={setAiImage} 
+                    <ImageUploader
+                      image={aiImage}
+                      onChange={setAiImage}
                     />
                   </div>
 
@@ -584,11 +660,15 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleAIParse}
-                    disabled={!aiInput.trim()}
+                    disabled={!aiInput.trim() || aiStatus === 'offline'}
                     className="w-full btn-primary flex items-center justify-center gap-2 py-3.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Wand2 className="w-5 h-5" />
-                    AI 智能解析
+                    {aiStatus === 'offline'
+                      ? 'AI 不可用'
+                      : aiStatus === 'degraded'
+                      ? 'AI 解析（可能失败）'
+                      : 'AI 智能解析'}
                   </motion.button>
                 </div>
               )}
@@ -736,6 +816,56 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
             >
               {imageAiStep === 'upload' && (
                 <div className="space-y-6">
+                  {/* AI 状态警告 */}
+                  {aiStatus !== 'online' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-amber-50 border border-amber-200 rounded-xl p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        {aiStatus === 'degraded' ? (
+                          <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <WifiOff className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-ink mb-1">
+                            {aiStatus === 'degraded' ? 'AI 密钥已过期' : 'AI 服务未连接'}
+                          </p>
+                          <p className="text-xs text-ink-mute">
+                            {aiStatus === 'degraded'
+                              ? '图片识别暂时不可用，建议切换到「手动填写」标签页。'
+                              : '无法连接 AI 服务，请检查网络或代理设置。'}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* 错误消息 */}
+                  {imageAiError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-red-50 border border-red-200 rounded-xl p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm text-red-700">{imageAiError}</p>
+                          <button
+                            type="button"
+                            onClick={() => { setImageAiError(''); setActiveTab('manual') }}
+                            className="text-xs text-primary font-medium hover:text-primary-deep transition-colors mt-1.5"
+                          >
+                            切换到手动填写 →
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   <div className="bg-gradient-to-br from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-5 border border-hairline">
                     <div className="flex items-start gap-3">
                       <Camera className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -746,21 +876,25 @@ export default function LostItemModal({ isOpen, onClose, onSubmit }: LostItemMod
                       </div>
                     </div>
                   </div>
-                  
-                  <ImageUploader 
-                    image={uploadedImage} 
-                    onChange={setUploadedImage} 
+
+                  <ImageUploader
+                    image={uploadedImage}
+                    onChange={setUploadedImage}
                   />
-                  
+
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleImageAnalyze}
-                    disabled={!uploadedImage}
+                    disabled={!uploadedImage || aiStatus === 'offline'}
                     className="w-full btn-primary flex items-center justify-center gap-2 py-3.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Wand2 className="w-5 h-5" />
-                    开始识别
+                    {aiStatus === 'offline'
+                      ? 'AI 不可用'
+                      : aiStatus === 'degraded'
+                      ? '开始识别（可能失败）'
+                      : '开始识别'}
                   </motion.button>
                 </div>
               )}

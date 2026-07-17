@@ -5,18 +5,18 @@
 // Worker 持有 API Key，前端代码中没有任何密钥。
 //
 // 模型分工：
-//   GLM-5.2（纯文本）→ 解析、描述、搜索、匹配等文字任务
-//   GLM-4.6V（多模态）→ 图片识别和图片搜索
+//   glm-4.7-flash（免费文本）→ 解析、描述、搜索、匹配等文字任务
+//   glm-4.6v-flash（免费多模态）→ 图片识别和图片搜索
 // ============================================================
 
 /** 代理地址：部署 Cloudflare Worker 后替换为实际 URL */
 const API_PROXY_URL =
   import.meta.env.VITE_API_PROXY_URL || 'http://localhost:8787'
 
-/** 文本模型 */
-const TEXT_MODEL = 'GLM-5.2'
-/** 多模态模型（支持图片） */
-const VISION_MODEL = 'GLM-4.6V'
+/** 文本模型（免费，200K 上下文） */
+const TEXT_MODEL = 'glm-4.7-flash'
+/** 多模态模型（免费，支持图片） */
+const VISION_MODEL = 'glm-4.6v-flash'
 
 // ---- 类型定义 ----
 
@@ -360,7 +360,7 @@ ${query}
 // ---- 图片识别（多模态） ----
 
 /**
- * 使用 GLM-5.2 多模态能力分析图片，返回完整的失物登记信息
+ * 使用多模态模型分析图片，返回完整的失物登记信息
  */
 export async function analyzeImageForRegistration(
   imageBase64: string
@@ -479,7 +479,7 @@ export async function analyzeImageForRegistration(
 }
 
 /**
- * 使用 GLM-5.2 分析图片，返回用于搜索的描述文本
+ * 使用多模态模型分析图片，返回用于搜索的描述文本
  */
 export async function analyzeLostItemImage(
   imageBase64: string
@@ -587,4 +587,40 @@ export function generateSearchQueryFromImageAnalysis(
   result: ImageAnalysisResult
 ): string {
   return result.description.trim()
+}
+
+// ---- AI 健康检查 ----
+
+export type AIStatus = 'online' | 'degraded' | 'offline' | 'checking'
+
+/**
+ * 检测 AI 服务是否可用
+ * - online: 代理通 + API Key 有效
+ * - degraded: 代理通但 API Key 无效（401/403）
+ * - offline: 代理不可达（网络错误）
+ */
+export async function checkAIHealth(): Promise<AIStatus> {
+  try {
+    const response = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+
+    if (response.ok) return 'online'
+
+    // 401/403 → API Key 问题
+    if (response.status === 401 || response.status === 403) {
+      return 'degraded'
+    }
+
+    return 'offline'
+  } catch {
+    return 'offline'
+  }
 }

@@ -1,36 +1,60 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Loader2, Wand2, CheckCircle2, Edit3, Info } from 'lucide-react'
+import { X, Sparkles, Loader2, Wand2, CheckCircle2, Edit3, Info, AlertCircle, WifiOff } from 'lucide-react'
 import LostItemCard from './LostItemCard'
-import { parseLostItem, ParsedLostItem } from '../utils/api'
+import { parseLostItem, ParsedLostItem, AIStatus } from '../utils/api'
 import { useLostItems } from '../hooks/useLostItems'
 
 interface SmartRegisterModalProps {
   isOpen: boolean
   onClose: () => void
+  aiStatus?: AIStatus
+  onManualRegister?: () => void
 }
 
-export default function SmartRegisterModal({ isOpen, onClose }: SmartRegisterModalProps) {
+export default function SmartRegisterModal({
+  isOpen,
+  onClose,
+  aiStatus = 'checking',
+  onManualRegister,
+}: SmartRegisterModalProps) {
   const [step, setStep] = useState<'input' | 'parsing' | 'preview' | 'success'>('input')
   const [input, setInput] = useState('')
   const [parsedItem, setParsedItem] = useState<ParsedLostItem | null>(null)
   const [editableItem, setEditableItem] = useState<Partial<ParsedLostItem>>({})
+  const [error, setError] = useState<string>('')
   const { addItem } = useLostItems()
 
   const handleParse = async () => {
     if (!input.trim()) return
     setStep('parsing')
-    
+    setError('')
+
     try {
       const result = await parseLostItem(input)
       setParsedItem(result)
       setEditableItem(result)
       setStep('preview')
-    } catch (error) {
-      console.error('Parse failed:', error)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '解析失败'
+      console.error('Parse failed:', msg)
+
+      // 根据错误类型给出不同提示
+      if (msg.includes('401') || msg.includes('过期') || msg.includes('认证')) {
+        setError('AI 服务密钥已过期，请联系管理员更新。你可以先使用手动登记。')
+      } else if (msg.includes('fetch') || msg.includes('网络') || msg.includes('Failed to fetch')) {
+        setError('无法连接 AI 服务，请检查网络连接。你可以先使用手动登记。')
+      } else {
+        setError(`AI 解析失败：${msg}。请重试或使用手动登记。`)
+      }
+
       setStep('input')
-      alert('解析失败，请重试')
     }
+  }
+
+  const handleSwitchToManual = () => {
+    onClose()
+    onManualRegister?.()
   }
 
   const handlePublish = () => {
@@ -127,6 +151,61 @@ export default function SmartRegisterModal({ isOpen, onClose }: SmartRegisterMod
                         exit={{ opacity: 0, x: 20 }}
                         className="space-y-6"
                       >
+                        {/* AI 不可用时显示警告 */}
+                        {aiStatus !== 'online' && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-amber-50 border border-amber-200 rounded-xl p-4"
+                          >
+                            <div className="flex items-start gap-3">
+                              {aiStatus === 'degraded' ? (
+                                <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <WifiOff className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div>
+                                <p className="text-sm font-medium text-ink mb-1">
+                                  {aiStatus === 'degraded' ? 'AI 密钥已过期' : 'AI 服务未连接'}
+                                </p>
+                                <p className="text-xs text-ink-mute mb-2">
+                                  {aiStatus === 'degraded'
+                                    ? '智能解析功能暂时不可用，建议使用手动登记。'
+                                    : '无法连接 AI 服务，请检查网络或代理设置。'}
+                                </p>
+                                <button
+                                  onClick={handleSwitchToManual}
+                                  className="text-xs text-primary font-medium hover:text-primary-deep transition-colors"
+                                >
+                                  前往手动登记 →
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* 错误消息 */}
+                        {error && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-red-50 border border-red-200 rounded-xl p-4"
+                          >
+                            <div className="flex items-start gap-3">
+                              <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="text-sm text-red-700">{error}</p>
+                                <button
+                                  onClick={handleSwitchToManual}
+                                  className="text-xs text-primary font-medium hover:text-primary-deep transition-colors mt-1.5"
+                                >
+                                  前往手动登记 →
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
                         <div className="bg-gradient-to-br from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-4 border border-hairline">
                           <div className="flex items-start gap-3">
                             <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
@@ -136,7 +215,7 @@ export default function SmartRegisterModal({ isOpen, onClose }: SmartRegisterMod
                             </div>
                           </div>
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-ink-secondary mb-2">
                             描述你的失物
@@ -154,11 +233,17 @@ export default function SmartRegisterModal({ isOpen, onClose }: SmartRegisterMod
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           onClick={handleParse}
-                          disabled={!input.trim()}
+                          disabled={!input.trim() || aiStatus === 'offline'}
                           className="w-full btn-primary flex items-center justify-center gap-2 py-3.5 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Wand2 className="w-5 h-5" />
-                          <span>AI 智能解析</span>
+                          <span>
+                            {aiStatus === 'offline'
+                              ? 'AI 不可用'
+                              : aiStatus === 'degraded'
+                              ? 'AI 智能解析（可能失败）'
+                              : 'AI 智能解析'}
+                          </span>
                         </motion.button>
                       </motion.div>
                     )}
