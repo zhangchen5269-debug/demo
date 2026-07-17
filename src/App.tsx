@@ -27,7 +27,8 @@ function App() {
     setSearchMode,
     addItem,
     searchItems,
-    handleSearch
+    handleSearch,
+    searchByImageKeywords,
   } = useSmartSearch()
 
   // 启动时检查 AI 健康状态
@@ -56,11 +57,14 @@ function App() {
   }, [aiStatus, setSearchMode, checkStatus])
 
   // AI 模式时只显示匹配的物品；关键词模式时用 searchItems 过滤
-  const filteredItems = query.trim() 
-    ? (searchMode === 'ai' 
+  // 图片搜索时 query 为空但 matchedIds 有值，也显示匹配结果
+  const filteredItems = query.trim()
+    ? (searchMode === 'ai'
         ? items.filter(item => matchedIds.includes(item.id))
         : searchItems(query))
-    : items
+    : matchedIds.length > 0
+      ? items.filter(item => matchedIds.includes(item.id))
+      : items
 
   const handleAddItem = (formData: LostItemFormData) => {
     addItem(formData)
@@ -81,9 +85,11 @@ function App() {
 
   const handleImageSearch = (searchQuery: string, fromImage: boolean = false) => {
     if (fromImage) {
-      setSearchMode('ai')
+      // 图片搜索：后台用关键词搜索，不显示在输入框中
+      searchByImageKeywords(searchQuery)
+    } else {
+      handleSearch(searchQuery)
     }
-    handleSearch(searchQuery)
   }
 
   return (
@@ -114,12 +120,13 @@ function App() {
 
         <div className="mb-6 flex items-center justify-between">
           <p className="text-sm text-ink-mute">
-            {query.trim() ? (
+            {query.trim() || matchedIds.length > 0 ? (
               <>
                 共找到 <span className="font-bold text-primary">{filteredItems.length}</span> 条失物信息
-                {searchMode === 'ai' && matchedIds.length > 0 && (
+                {matchedIds.length > 0 && (
                   <span className="ml-2 text-xs text-ink-mute">
-                    (其中 <span className="font-semibold text-primary">{matchedIds.length}</span> 条高匹配)
+                    ({!query.trim() && <><span className="font-semibold text-primary">图片识别</span> — </>}
+                     <span className="font-semibold text-primary">{matchedIds.length}</span> 条匹配)
                   </span>
                 )}
               </>
@@ -129,9 +136,9 @@ function App() {
               </>
             )}
           </p>
-          {query && (
+          {(query || matchedIds.length > 0) && (
             <button
-              onClick={() => handleSearch('')}
+              onClick={() => { handleSearch(''); setSearchMode('keyword') }}
               className="text-sm text-primary hover:text-primary-deep transition-colors"
             >
               清除搜索

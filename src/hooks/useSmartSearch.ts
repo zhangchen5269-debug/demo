@@ -182,22 +182,22 @@ export function useSmartSearch() {
 
   const handleSearch = useCallback(async (searchQuery: string) => {
     setQuery(searchQuery)
-    
+
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current)
     }
-    
+
     if (!searchQuery.trim()) {
       setMatchedIds([])
       setIsSearching(false)
       return
     }
-    
+
     setIsSearching(true)
-    
+
     debounceTimerRef.current = setTimeout(async () => {
       console.log('Search mode:', searchMode)
-      
+
       if (searchMode === 'keyword') {
         console.log('Using keyword search')
         const matches = simpleKeywordMatch(searchQuery, items)
@@ -220,6 +220,25 @@ export function useSmartSearch() {
       }
     }, 500)
   }, [items, searchMode])
+
+  /** 图片搜索：用关键字后台搜索，不在输入框显示文字 */
+  const searchByImageKeywords = useCallback(async (keywords: string) => {
+    if (!keywords.trim()) return
+
+    // 切换到 AI 模式
+    setSearchMode('ai')
+    setIsSearching(true)
+
+    try {
+      const matched = await semanticSearchWithAI(keywords, items)
+      setMatchedIds(matched)
+    } catch (error) {
+      console.error('Image keyword search failed, falling back to keyword:', error)
+      const matches = simpleKeywordMatch(keywords, items)
+      setMatchedIds(matches)
+    }
+    setIsSearching(false)
+  }, [items])
 
   const filteredItems = useMemo(() => {
     return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -246,6 +265,7 @@ export function useSmartSearch() {
     getItemById,
     searchItems,
     handleSearch,
+    searchByImageKeywords,
   }
 }
 

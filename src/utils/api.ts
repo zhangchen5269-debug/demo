@@ -497,7 +497,7 @@ export async function analyzeLostItemImage(
           content: [
             {
               type: 'text',
-              text: '这是一张校园失物图片，请仔细分析图片中的物品，包括：物品类型、主要颜色、材质、显著特征、品牌、文字信息等。输出一段清晰、自然、适合用于失物招领搜索的描述文本。',
+              text: '分析这张校园失物图片，返回 JSON（不要其他文字）：\n{\n  "itemType": "物品类型关键词（如：耳机、水杯、钥匙、书包，2-4字）",\n  "color": "主要颜色（如：黑色、蓝色、银色）",\n  "features": ["特征1", "特征2", "特征3"],\n  "description": "一句话描述"\n}\n只输出物品本身的特征，不要编造失主信息。',
             },
             {
               type: 'image_url',
@@ -507,7 +507,7 @@ export async function analyzeLostItemImage(
         },
       ],
       temperature: 0.3,
-      maxTokens: 600,
+      maxTokens: 300,
       model: VISION_MODEL,
     })
 
@@ -582,11 +582,33 @@ function extractColor(text: string): string {
   return ''
 }
 
-/** 从图片分析结果生成搜索查询文本 */
+/** 从图片分析结果生成搜索查询文本（只提取关键字） */
 export function generateSearchQueryFromImageAnalysis(
   result: ImageAnalysisResult
 ): string {
-  return result.description.trim()
+  const keywords: string[] = []
+
+  // 物品类型
+  if (result.itemType && result.itemType !== '未知' && result.itemType !== '其他') {
+    keywords.push(result.itemType)
+  }
+
+  // 颜色
+  if (result.color && result.color !== '未知') {
+    keywords.push(result.color)
+  }
+
+  // 特征关键词
+  if (result.features && result.features.length > 0) {
+    keywords.push(...result.features.slice(0, 4))
+  }
+
+  // 兜底：提取描述中前几个词
+  if (keywords.length === 0) {
+    return result.description.trim().slice(0, 30)
+  }
+
+  return keywords.join(' ')
 }
 
 // ---- AI 健康检查 ----
