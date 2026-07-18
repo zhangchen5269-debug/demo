@@ -1,16 +1,14 @@
 import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  X, 
-  Upload, 
+import {
+  X,
+  Upload,
   Loader2,
   Sparkles,
   Wand2,
-  Edit3,
-  CheckCircle2
 } from 'lucide-react'
 import Modal from './Modal'
-import { analyzeLostItemImage, ImageAnalysisResult, generateSearchQueryFromImageAnalysis } from '../utils/api'
+import { analyzeLostItemImage, generateSearchQueryFromImageAnalysis } from '../utils/api'
 
 interface ImageSearchModalProps {
   isOpen: boolean
@@ -18,21 +16,17 @@ interface ImageSearchModalProps {
   onSearch: (query: string, fromImage?: boolean) => void
 }
 
-type Step = 'upload' | 'analyzing' | 'result' | 'editing'
+type Step = 'upload' | 'analyzing'
 
 export default function ImageSearchModal({ isOpen, onClose, onSearch }: ImageSearchModalProps) {
   const [step, setStep] = useState<Step>('upload')
   const [image, setImage] = useState<string>('')
-  const [analysisResult, setAnalysisResult] = useState<ImageAnalysisResult | null>(null)
-  const [editedQuery, setEditedQuery] = useState<string>('')
   const [error, setError] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const resetModal = () => {
     setStep('upload')
     setImage('')
-    setAnalysisResult(null)
-    setEditedQuery('')
     setError('')
   }
 
@@ -73,10 +67,10 @@ export default function ImageSearchModal({ isOpen, onClose, onSearch }: ImageSea
 
     try {
       const result = await analyzeLostItemImage(image)
-      setAnalysisResult(result)
       const query = generateSearchQueryFromImageAnalysis(result)
-      setEditedQuery(query)
-      setStep('result')
+      // 识别完成 → 直接搜索，关闭弹窗
+      onSearch(query, true)
+      handleClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '图片分析失败'
 
@@ -91,23 +85,6 @@ export default function ImageSearchModal({ isOpen, onClose, onSearch }: ImageSea
       console.error('图片分析失败:', msg)
       setStep('upload')
     }
-  }
-
-  const handleStartSearch = () => {
-    if (!editedQuery.trim()) {
-      setError('请输入搜索内容')
-      return
-    }
-    onSearch(editedQuery, true)
-    handleClose()
-  }
-
-  const handleEditQuery = () => {
-    setStep('editing')
-  }
-
-  const handleSaveEdit = () => {
-    setStep('result')
   }
 
   return (
@@ -217,144 +194,7 @@ export default function ImageSearchModal({ isOpen, onClose, onSearch }: ImageSea
               </div>
             </motion.div>
             <h3 className="text-lg font-semibold text-ink mb-2">AI 正在识别图片...</h3>
-            <p className="text-ink-mute">正在分析图片内容，请稍候</p>
-          </motion.div>
-        )}
-
-        {step === 'result' && analysisResult && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <div className="bg-gradient-to-r from-primary-bg-subdued to-primary-bg-subdued rounded-xl p-4 border border-hairline flex items-center gap-3">
-              <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
-              <div className="text-sm text-ink-secondary">
-                <p className="font-medium text-ink">识别成功！</p>
-                <p className="text-ink-mute">以下是 AI 识别的物品信息</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-canvas-soft rounded-lg p-4 border border-hairline">
-                <p className="text-xs text-ink-mute mb-1">物品类型</p>
-                <p className="text-sm font-medium text-ink">{analysisResult.itemType || '未知'}</p>
-              </div>
-              <div className="bg-canvas-soft rounded-lg p-4 border border-hairline">
-                <p className="text-xs text-ink-mute mb-1">识别颜色</p>
-                <p className="text-sm font-medium text-ink">{analysisResult.color || '未知'}</p>
-              </div>
-            </div>
-
-            <div className="bg-canvas-soft rounded-lg p-4 border border-hairline">
-              <p className="text-xs text-ink-mute mb-2">详细描述</p>
-              <p className="text-sm text-ink leading-relaxed">{analysisResult.description}</p>
-            </div>
-
-            {analysisResult.features && analysisResult.features.length > 0 && (
-              <div>
-                <p className="text-xs text-ink-mute mb-2">识别特征</p>
-                <div className="flex flex-wrap gap-2">
-                  {analysisResult.features.map((feature, idx) => (
-                    <span 
-                      key={idx}
-                      className="px-3 py-1 bg-primary-bg-subdued text-ink-secondary rounded-full text-xs border border-hairline"
-                    >
-                      {feature}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-ink-secondary">生成的搜索描述</p>
-                <button
-                  onClick={handleEditQuery}
-                  className="text-xs text-primary hover:text-primary-deep flex items-center gap-1"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  编辑
-                </button>
-              </div>
-              <div className="bg-canvas border border-hairline rounded-lg px-4 py-3">
-                <p className="text-sm text-ink">{editedQuery}</p>
-              </div>
-            </div>
-
-            {error && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm"
-              >
-                {error}
-              </motion.div>
-            )}
-
-            <div className="flex gap-3">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  setImage('')
-                  setAnalysisResult(null)
-                  setEditedQuery('')
-                  setStep('upload')
-                }}
-                className="flex-1 btn-secondary"
-              >
-                重新上传
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleStartSearch}
-                className="flex-1 btn-primary"
-              >
-                开始搜索
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-
-        {step === 'editing' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
-          >
-            <div className="bg-canvas-soft rounded-xl p-4 border border-hairline">
-              <p className="text-sm font-medium text-ink-secondary mb-3">编辑搜索描述</p>
-              <textarea
-                value={editedQuery}
-                onChange={(e) => setEditedQuery(e.target.value)}
-                rows={4}
-                className="w-full bg-canvas border border-hairline rounded-lg px-4 py-3 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
-                placeholder="输入搜索内容..."
-              />
-              <p className="text-xs text-ink-mute mt-2">您可以手动编辑搜索描述，使其更准确</p>
-            </div>
-
-            <div className="flex gap-3">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setStep('result')}
-                className="flex-1 btn-secondary"
-              >
-                取消
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleSaveEdit}
-                className="flex-1 btn-primary"
-              >
-                保存
-              </motion.button>
-            </div>
+            <p className="text-ink-mute">识别完成后将自动搜索匹配的失物</p>
           </motion.div>
         )}
       </div>

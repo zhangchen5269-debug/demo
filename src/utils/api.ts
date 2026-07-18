@@ -401,13 +401,27 @@ export async function semanticSearchItems(
   }
 }
 
-/** 本地关键词匹配打分（客户端瞬时完成） */
+/** 本地关键词匹配打分（反向匹配：物品词条命中查询即得分） */
 function rankByKeywordOverlap(
   query: string,
   items: LostItemForSearch[]
 ): LostItemForSearch[] {
   const q = query.toLowerCase()
-  const words = q.split(/\s+/).filter((w) => w.length > 0)
+
+  // 常见物品类型词（用于从查询中提取关键词）
+  const ITEM_KEYWORDS = [
+    '耳机', '蓝牙耳机', '手机', '电脑', '平板', '充电宝', '数据线',
+    '钱包', '钥匙', '水杯', '保温杯', '书包', '背包', '雨伞',
+    '身份证', '学生证', '一卡通', '校园卡', '银行卡', '卡片',
+    '书', '教材', '笔记本', '笔', '尺子', '计算器', '眼镜',
+    '手表', '帽子', '围巾', '手套', '衣服', '鞋子', 'u盘',
+  ]
+
+  // 从查询中提取物品关键词
+  const queryItemWords = ITEM_KEYWORDS.filter((kw) => q.includes(kw))
+  // 从查询中提取地点关键词
+  const LOCATION_KEYWORDS = ['图书馆', '食堂', '教室', '操场', '教学楼', '宿舍', '体育馆', '校门', '实验室']
+  const queryLocWords = LOCATION_KEYWORDS.filter((kw) => q.includes(kw))
 
   const scored = items.map((item) => {
     const title = item.title.toLowerCase()
@@ -415,10 +429,29 @@ function rankByKeywordOverlap(
     const loc = item.location.toLowerCase()
     let score = 0
 
-    for (const word of words) {
+    // 方法1：从查询中提取的关键词匹配物品
+    for (const word of queryItemWords) {
       if (title.includes(word)) score += 30
       else if (desc.includes(word)) score += 15
-      if (loc.includes(word)) score += 5
+    }
+    for (const word of queryLocWords) {
+      if (loc.includes(word)) score += 10
+    }
+
+    // 方法2：从物品标题中提取词片段，反向匹配查询（兜底中文无空格场景）
+    // 按常见分隔符拆分标题，检查片段是否出现在查询中
+    const titleFragments = title
+      .split(/[\s\-·•，,。/]+/)
+      .filter((f) => f.length >= 2)
+    for (const frag of titleFragments) {
+      if (q.includes(frag) && !queryItemWords.includes(frag)) {
+        score += 25
+      }
+    }
+
+    // 方法3：全标题模糊匹配（查询包含完整标题或标题包含查询短语）
+    if (q.includes(title) || title.includes(q)) {
+      score += 40
     }
 
     return { item, score }
