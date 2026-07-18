@@ -93,7 +93,9 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen relative z-10">
+      {/* 白色背景层 */}
+      <div className="fixed inset-0 -z-20 bg-gradient-soft" />
       <BackgroundDecorations />
       <Header onAddClick={() => setIsAddModalOpen(true)} />
 

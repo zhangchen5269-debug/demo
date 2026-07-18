@@ -221,7 +221,7 @@ export function useSmartSearch() {
         }
         setIsSearching(false)
       }
-    }, 800)
+    }, 400)
   }, [items, searchMode])
 
   /** 图片搜索：用关键字后台搜索，不在输入框显示文字 */

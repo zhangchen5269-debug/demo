@@ -6,7 +6,7 @@
 //
 // 模型分工：
 //   GLM-4-Air（并发 100）→ 解析、描述、搜索、匹配等文字任务
-//   GLM-4.6V（并发 10）→ 图片识别和图片搜索
+//   GLM-4V-Flash（免费，高并发）→ 图片识别和图片搜索
 // ============================================================
 
 /** 代理地址：部署 Cloudflare Worker 后替换为实际 URL */
@@ -15,8 +15,8 @@ const API_PROXY_URL =
 
 /** 文本模型（并发 100，不用担心限流） */
 const TEXT_MODEL = 'GLM-4-Air'
-/** 多模态模型（并发 10，支持图片） */
-const VISION_MODEL = 'GLM-4.6V'
+/** 多模态模型（免费，高并发，支持图片） */
+const VISION_MODEL = 'GLM-4V-Flash'
 
 // ---- 类型定义 ----
 
@@ -61,7 +61,7 @@ export interface ImageRegistrationResult {
   features: string[]
 }
 
-// ---- 通用 API 调用 ----
+// ---- 通用 API 调用（带重试 + 分通道节流） ----
 
 interface GLMCallOptions {
   messages: ChatMessage[]
@@ -72,9 +72,36 @@ interface GLMCallOptions {
   model?: string
 }
 
-async function callGLMAPI(options: GLMCallOptions): Promise<string> {
-  // 节流：确保两次调用之间至少间隔 5 秒，且同时只有一个请求
-  await throttleWait()
+/** 文本模型节流：300ms，高并发模型只需防连点 */
+const TEXT_THROTTLE_MS = 300
+/** 视觉模型节流：2s，免费模型仍需控制频率 */
+const VISION_THROTTLE_MS = 2000
+
+let lastTextCall = 0
+let lastVisionCall = 0
+
+function throttleWait(model?: string): Promise<void> {
+  const isVision = model === VISION_MODEL
+  const minInterval = isVision ? VISION_THROTTLE_MS : TEXT_THROTTLE_MS
+  const lastCall = isVision ? lastVisionCall : lastTextCall
+
+  const now = Date.now()
+  const wait = Math.max(0, minInterval - (now - lastCall))
+
+  if (isVision) {
+    lastVisionCall = now + wait
+  } else {
+    lastTextCall = now + wait
+  }
+
+  if (wait > 0) {
+    return new Promise((resolve) => setTimeout(resolve, wait))
+  }
+  return Promise.resolve()
+}
+
+async function callGLMAPI(options: GLMCallOptions, retryCount = 0): Promise<string> {
+  await throttleWait(options.model)
 
   try {
     const { messages, temperature = 0.7, maxTokens = 2000, responseFormat, model } = options
@@ -97,13 +124,19 @@ async function callGLMAPI(options: GLMCallOptions): Promise<string> {
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
+      // 429 速率限制 → 指数退避重试（最多 2 次）
+      if (response.status === 429 && retryCount < 2) {
+        const delay = Math.pow(2, retryCount + 1) * 1000 // 2s, 4s
+        console.warn(`429 限流，${delay / 1000}s 后重试 (${retryCount + 1}/2)`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        return callGLMAPI(options, retryCount + 1)
+      }
 
-      // 429 速率限制 → 给出友好提示
       if (response.status === 429) {
         throw new Error('请求太频繁，请稍后再试')
       }
 
+      const errorText = await response.text()
       throw new Error(
         `API 请求失败: ${response.status} ${response.statusText} — ${errorText}`
       )
@@ -116,8 +149,14 @@ async function callGLMAPI(options: GLMCallOptions): Promise<string> {
     }
 
     return data.choices?.[0]?.message?.content || '未获取到有效响应'
-  } finally {
-    isCallInFlight = false
+  } catch (error) {
+    // 网络错误也重试一次
+    if (retryCount < 1 && error instanceof Error && error.message.includes('fetch')) {
+      console.warn('网络错误，1s 后重试')
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      return callGLMAPI(options, retryCount + 1)
+    }
+    throw error
   }
 }
 
@@ -287,7 +326,7 @@ ${candidateItems.map((item, i) => `${i + 1}. ${item.title} - ${item.description}
   }
 }
 
-// ---- AI 语义搜索 ----
+// ---- AI 语义搜索（混合：关键词初筛 → AI 精排） ----
 
 export interface LostItemForSearch {
   id: string
@@ -297,77 +336,98 @@ export interface LostItemForSearch {
 }
 
 /**
- * AI 语义搜索：根据用户查询在失物列表中找出最匹配的物品
- * 返回匹配的物品 ID 列表（最多 3 个，按匹配度降序）
+ * 混合搜索：关键词初筛 → AI 精排
+ * - 本地关键词快速缩小候选集（零延迟）
+ * - AI 只在 Top 10 候选中排序（更快更准）
  */
 export async function semanticSearchItems(
   query: string,
   items: LostItemForSearch[]
 ): Promise<string[]> {
+  // Step 1: 本地关键词初筛，取 Top 10
+  const keywordScored = rankByKeywordOverlap(query, items)
+  const topCandidates = keywordScored.slice(0, 10)
+
+  if (topCandidates.length === 0) return []
+
+  // Step 2: AI 精排（候选集小了，速度快 + 准确率高）
   const content = await callGLMAPI({
     messages: [
       {
         role: 'system',
-        content: `你是一个智能失物招领搜索助手。用户输入了查询，你需要判断这个查询与候选失物列表的匹配程度。
+        content: `你是失物招领搜索助手。根据用户查询从候选列表中选最匹配的物品。
 
-【核心规则】
-1. 只返回JSON对象，不要包含其他文字
-2. 返回匹配度最高的Top 3物品ID，按匹配度从高到低排序
-3. JSON格式：{"matches": [{"id": "物品ID", "score": 0-100的分数}]}
-4. 【最重要】只返回物品列表中真实存在的物品ID，绝对不要编造任何ID！
-
-【评分标准】
-搜索"蓝牙耳机"时：
-- 物品名称包含"蓝牙耳机"或"耳机"：80-100分
-- 物品名称包含"图书馆"但不含"耳机"相关词：0分（不匹配）
-
-搜索任何物品时：
-- 物品名称完全匹配或高度相关：80-100分
-- 物品名称部分匹配（如搜索"耳机"，物品名是"苹果耳机"）：70-90分
-- 只有地点匹配（搜索"耳机"，物品是"图书馆的书"）：0分
-- 只有类别匹配：50-60分
-
-【严格禁止】
-- 不能因为查询和物品都在"图书馆"就认为匹配
-- 不能因为查询有"耳机"就匹配任何带"耳"字的物品
-
-【物品列表】
-${items.map((item) => `ID:${item.id} | 名称:${item.title} | 描述:${item.description} | 地点:${item.location}`).join('\n')}
-
-【用户查询】
-${query}
-
-请严格按评分标准判断，只返回真正匹配的物品ID。`,
+规则：
+- 核心看物品名称/描述与查询的语义相似度（含同义词、同类物品）
+- 次要看地点是否匹配
+- 只从候选列表中选择，不编造ID
+- 返回JSON：{"matches":[{"id":"物品ID","score":0-100}]}
+- score<40 表示不匹配，不返回`,
       },
       {
         role: 'user',
-        content: '请分析用户查询与物品列表的匹配度，返回Top 3的物品ID和分数',
+        content: `查询：${query}\n\n候选列表：\n${topCandidates.map((c) => `[${c.id}] ${c.title} | ${c.description} | ${c.location}`).join('\n')}`,
       },
     ],
-    temperature: 0.3,
-    maxTokens: 500,
+    temperature: 0.1,
+    maxTokens: 300,
     responseFormat: 'json_object',
   })
 
   try {
     const result = JSON.parse(content)
-    const matches = result.matches || result.Matches || []
-    const validItemIds = new Set(items.map((item) => item.id))
+    const matches = result.matches || []
+    const validIds = new Set(topCandidates.map((c) => c.id))
 
-    return matches
-      .filter(
-        (m: { id?: string; score?: number }) =>
-          m &&
-          typeof m.id === 'string' &&
-          validItemIds.has(m.id) &&
-          (m.score ?? 0) >= 60
+    const aiMatched = matches
+      .filter((m: { id?: string; score?: number }) =>
+        m && typeof m.id === 'string' && validIds.has(m.id) && (m.score ?? 0) >= 40
       )
-      .slice(0, 3)
+      .sort((a: { score: number }, b: { score: number }) => (b.score ?? 0) - (a.score ?? 0))
       .map((m: { id: string }) => m.id)
+
+    // Step 3: 融合 AI + 关键词结果（AI 优先，关键词补充，最多 5 个）
+    const merged = [...aiMatched]
+    for (const item of keywordScored) {
+      if (merged.length >= 5) break
+      if (!merged.includes(item.id)) {
+        merged.push(item.id)
+      }
+    }
+    return merged.slice(0, 5)
   } catch {
-    console.error('AI 语义搜索 JSON 解析失败')
-    return []
+    console.error('AI 语义搜索 JSON 解析失败，回退到关键词')
+    return keywordScored.slice(0, 5).map((k) => k.id)
   }
+}
+
+/** 本地关键词匹配打分（客户端瞬时完成） */
+function rankByKeywordOverlap(
+  query: string,
+  items: LostItemForSearch[]
+): LostItemForSearch[] {
+  const q = query.toLowerCase()
+  const words = q.split(/\s+/).filter((w) => w.length > 0)
+
+  const scored = items.map((item) => {
+    const title = item.title.toLowerCase()
+    const desc = item.description.toLowerCase()
+    const loc = item.location.toLowerCase()
+    let score = 0
+
+    for (const word of words) {
+      if (title.includes(word)) score += 30
+      else if (desc.includes(word)) score += 15
+      if (loc.includes(word)) score += 5
+    }
+
+    return { item, score }
+  })
+
+  return scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.item)
 }
 
 // ---- 图片识别（多模态） ----
@@ -645,25 +705,4 @@ export async function checkAIHealth(): Promise<AIStatus> {
   } catch {
     return 'offline'
   }
-}
-
-// ---- 请求节流 ----
-
-let lastAPICallTime = 0
-let isCallInFlight = false
-const MIN_INTERVAL_MS = 1500 // 两次 API 调用最小间隔 1.5 秒
-
-async function throttleWait(): Promise<void> {
-  // 等待正在执行的请求完成
-  while (isCallInFlight) {
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
-  // 等待间隔冷却
-  const now = Date.now()
-  const elapsed = now - lastAPICallTime
-  if (elapsed < MIN_INTERVAL_MS) {
-    await new Promise(resolve => setTimeout(resolve, MIN_INTERVAL_MS - elapsed))
-  }
-  isCallInFlight = true
-  lastAPICallTime = Date.now()
 }

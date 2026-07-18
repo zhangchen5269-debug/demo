@@ -6,7 +6,7 @@
 
 @layer base {
   body {
-    @apply bg-gradient-soft text-ink font-sans antialiased;
+    @apply text-ink font-sans antialiased;
     min-height: 100vh;
   }
 
